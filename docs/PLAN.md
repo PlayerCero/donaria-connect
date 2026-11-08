@@ -116,10 +116,12 @@ README con el diagrama de arquitectura, cómo correrlo, decisiones (por qué dos
 
 - ✅ Fase 0 (07/11/2026): repositorio y estructura.
 - ✅ Fase 1 (08/11/2026): Azure SQL creada con la oferta gratuita (servidor sin servidor, Brazil South, 32 GB, facturación extra desactivada, autenticación solo Microsoft Entra). `db/01_azure.sql` cargado; mismas cifras que en local (500 donantes, 354 elegibles al 09/11/2026).
-- ✅ Fase 2 (08/11/2026): API en FastAPI (`api/`), 13 rutas, 19 pruebas con base simulada, `scripts/smoke_test.py` para la prueba contra la base real. Login de demostración por rol (sin contraseñas).
+- ✅ Fase 2 (08/11/2026): API en FastAPI (`api/`), 13 rutas, 19 pruebas con base simulada, `scripts/smoke_test.py` contra Azure SQL: 14/14 correctos (08/11/2026). Conexión a Azure con token de Microsoft Entra (azure-identity). Login de demostración por rol (sin contraseñas).
 - ⏭️ Siguiente: fase 3 (conectar la web a la API).
 
 ## Historial
+
+- 2026-11-08 — Fase 2 verificada contra Azure SQL: 14/14 en smoke_test.
 
 - 2026-11-08 — Fase 2: API en FastAPI con pruebas.
 
