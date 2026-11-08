@@ -36,18 +36,39 @@ def cadena_conexion(cfg: Settings = settings) -> str:
     ]
     if cfg.db_auth == "windows":
         partes += ["Trusted_Connection=yes", "TrustServerCertificate=yes"]
-    elif cfg.db_auth == "entra-interactive":
-        # Abre la ventana de inicio de sesión de Microsoft la primera vez.
-        partes += ["Authentication=ActiveDirectoryInteractive", f"UID={cfg.db_user}"]
-    elif cfg.db_auth == "entra-msi":
-        # Identidad administrada (cuando la API corra en Azure App Service).
-        partes += ["Authentication=ActiveDirectoryMsi"]
+    elif cfg.db_auth in ("entra-interactive", "entra-msi"):
+        # Con Microsoft Entra no va usuario en la cadena: la API pide un token con azure-identity
+        # y lo entrega al driver (ver _token_entra). Es más confiable que Authentication=... del driver.
+        pass
     elif cfg.db_auth == "sql":
         partes += [f"UID={cfg.db_user}", f"PWD={cfg.db_password}"]
     else:
         raise ValueError(f"DB_AUTH no reconocido: {cfg.db_auth}")
-    partes.append("Connection Timeout=90")
     return ";".join(partes) + ";"
+
+
+_SQL_COPT_SS_ACCESS_TOKEN = 1256  # atributo del driver ODBC para entregar un token de Entra
+_ALCANCE_AZURE_SQL = "https://database.windows.net/.default"
+
+
+def _credencial_entra(cfg: Settings = settings):
+    """Credencial de Microsoft Entra. Se crea una vez y guarda el token en memoria (se renueva solo)."""
+    if cfg.db_auth == "entra-msi":
+        from azure.identity import ManagedIdentityCredential
+
+        return ManagedIdentityCredential()
+    from azure.identity import InteractiveBrowserCredential
+
+    # Abre el navegador la primera vez para iniciar sesión con la cuenta indicada en DB_USER.
+    return InteractiveBrowserCredential(login_hint=cfg.db_user or None)
+
+
+def _token_entra(credencial) -> bytes:
+    """Empaqueta el token como lo pide el driver: largo (4 bytes) + token en UTF-16-LE."""
+    import struct
+
+    token = credencial.get_token(_ALCANCE_AZURE_SQL).token.encode("utf-16-le")
+    return struct.pack(f"<I{len(token)}s", len(token), token)
 
 
 def _a_dict(cursor) -> list[dict[str, Any]]:
@@ -68,14 +89,20 @@ def _traducir(error: Exception) -> Exception:
 class Database:
     """Envoltorio mínimo sobre pyodbc. Las pruebas lo reemplazan por una base simulada."""
 
-    def __init__(self, conexion_str: str | None = None):
-        self._conexion_str = conexion_str or cadena_conexion()
+    def __init__(self, conexion_str: str | None = None, cfg: Settings = settings):
+        self._conexion_str = conexion_str or cadena_conexion(cfg)
+        self._usa_entra = not conexion_str and cfg.db_auth in ("entra-interactive", "entra-msi")
+        self._credencial = _credencial_entra(cfg) if self._usa_entra else None
 
     @contextmanager
     def _conexion(self, autocommit: bool = True) -> Iterator[Any]:
         import pyodbc  # import diferido: las pruebas no necesitan el driver ODBC
 
-        conn = pyodbc.connect(self._conexion_str, autocommit=autocommit)
+        extra = {}
+        if self._usa_entra:
+            extra["attrs_before"] = {_SQL_COPT_SS_ACCESS_TOKEN: _token_entra(self._credencial)}
+        # timeout = segundos de espera al conectar; la base sin servidor de Azure tarda en "despertar".
+        conn = pyodbc.connect(self._conexion_str, autocommit=autocommit, timeout=90, **extra)
         try:
             yield conn
         finally:
