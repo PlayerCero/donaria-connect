@@ -112,5 +112,14 @@ README con el diagrama de arquitectura, cómo correrlo, decisiones (por qué dos
 - Una fase a la vez; cada fase termina con su "listo cuando" verificado.
 - Si una fase se pasa del doble de sus horas, se para y se decide si se recorta.
 
+## Estado
+
+- ✅ Fase 0 (07/11/2026): repositorio y estructura.
+- ✅ Fase 1 (08/11/2026): Azure SQL creada con la oferta gratuita (servidor sin servidor, Brazil South, 32 GB, facturación extra desactivada, autenticación solo Microsoft Entra). `db/01_azure.sql` cargado; mismas cifras que en local (500 donantes, 354 elegibles al 09/11/2026).
+- ⏭️ Siguiente: fase 2 (API en FastAPI).
+
 ## Historial
+
+- 2026-11-08 — Fase 1 terminada: base en Azure SQL verificada contra la local.
+- 2026-11-07 — Fase 0 terminada: repo creado y estructura subida.
 - 2026-11-07 — Plan creado dos días antes de la exposición preliminar 3 del curso DPY. Elegida la opción 1 (demo funcional) sobre el piloto real y sobre solo documentar.

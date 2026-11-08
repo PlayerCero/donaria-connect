@@ -37,7 +37,7 @@ SQL Server opera la app (transacciones, claves únicas, respuestas en milisegund
 
 | Carpeta | Contenido | Estado |
 |---|---|---|
-| `db/` | Script de creación + 500 donantes ficticios, olas, antifraude, vistas y permisos; consultas de demo | ✅ |
+| `db/` | Script de creación + 500 donantes ficticios, olas, antifraude, vistas y permisos; consultas de demo. `01_azure.sql` es la versión para Azure SQL | ✅ local y en Azure SQL |
 | `web/` | Prototipo navegable (sin dependencias). Abrir `web/index.html` | ✅ con datos de ejemplo |
 | `api/` | API en FastAPI | 🔲 fase 2 |
 | `pipeline/` | Extracción a BigQuery | 🔲 fase 7 |
