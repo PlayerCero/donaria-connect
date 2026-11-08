@@ -26,6 +26,7 @@ IF DATABASE_PRINCIPAL_ID('rol_institucion') IS NOT NULL DROP ROLE rol_institucio
 DROP VIEW IF EXISTS dbo.vw_reporte_institucion, dbo.vw_alertas_pendientes;
 DROP PROCEDURE IF EXISTS dbo.sp_lanzar_ola, dbo.sp_ejecutar_reglas_antifraude;
 DROP FUNCTION IF EXISTS dbo.fn_donantes_elegibles;
+DROP TABLE IF EXISTS dbo.RESPUESTA_CONVOCATORIA;   -- de 03_fase3_respuestas.sql
 DROP TABLE IF EXISTS dbo.NOTIFICACION, dbo.OLA_CONVOCATORIA, dbo.RESULTADO_AGREGADO, dbo.NECESIDAD,
                      dbo.ALERTA_ANTIFRAUDE, dbo.DONACION_CONFIRMADA, dbo.CONSENTIMIENTO,
                      dbo.USUARIO_INSTITUCION, dbo.DONANTE, dbo.INSTITUCION, dbo.AUDITORIA;

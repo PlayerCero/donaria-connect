@@ -7,7 +7,13 @@
   const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
   const fecha = (iso) => { const [y, m, d] = iso.slice(0, 10).split("-").map(Number); return `${d} ${MESES[m - 1]} ${y}`; };
   const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-  const HOY = "2026-10-15";
+  // Fecha "de hoy": la de la API si está conectada (fecha de referencia de la demo), si no la del prototipo.
+  const HOY = () => DB.hoy || "2026-10-15";
+  const ON = () => !!(window.API && window.API.conectado);
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const MESES_L = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre"];
+  const diaLargo = (iso) => { const d = new Date(iso + "T12:00:00"); const t = `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES_L[d.getMonth()]}`; return t[0].toUpperCase() + t.slice(1); };
+  const mesLargo = (iso) => { const [y, m] = iso.split("-").map(Number); return `${MESES_L[m - 1]} de ${y}`; };
 
   /* ---------- Iconos (trazo de 1.8, misma familia) ---------- */
   const P = {
@@ -42,7 +48,8 @@
 
   /* ---------- Estado de la sesión del prototipo ---------- */
   const S = {
-    reg: { nombres: "", dni: "", cel: "", distrito: "", tipo: "", noSabe: false, touched: {} },
+    reg: { nombres: "", dni: "", cel: "", distrito: "", sexo: "", tipo: "", noSabe: false, touched: {} },
+    ocupado: false,
     verif: 0, consent: false, sms: true,
     respuesta: null, avisos: true, canal: DB.donante.canal, confirmEliminar: false,
     nueva: { tipo: "", meta: 4, radio: 3 }, filtro: "Activas",
@@ -54,6 +61,11 @@
     document.querySelector(".toast")?.remove();
     const t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); t.textContent = msg;
     document.body.appendChild(t); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 3600);
+  };
+  // Guarda en la base (si la API está conectada) evitando dobles clics; muestra el error de la API si falla.
+  const conApi = async (fn) => {
+    if (S.ocupado) return; S.ocupado = true; render();
+    try { await fn(); } catch (e) { toast(e.message || "No se pudo guardar. Inténtalo otra vez."); } finally { S.ocupado = false; render(); }
   };
   const go = (h) => { if (location.hash === "#" + h) render(); else location.hash = h; };
 
@@ -74,7 +86,8 @@
     if (!/^\d{8}$/.test(r.dni)) e.dni = "El DNI tiene 8 dígitos.";
     if (!/^9\d{8}$/.test(r.cel.replace(/\s/g, ""))) e.cel = "Usa un celular peruano de 9 dígitos que empiece con 9.";
     if (!r.distrito) e.distrito = "Elige tu distrito.";
-    if (!r.tipo && !r.noSabe) e.tipo = "Elige tu tipo de sangre o marca que no lo sabes.";
+    if (!r.sexo) e.sexo = "Elige una opción.";
+    if (!r.tipo && !r.noSabe) e.tipo = ON() ? "Elige tu tipo de sangre." : "Elige tu tipo de sangre o marca que no lo sabes.";
     return e;
   };
   const fieldErr = (k, e) => (S.reg.touched[k] && e[k] ? `<p class="err" id="e-${k}">${ic("alert")}${e[k]}</p>` : "");
@@ -92,9 +105,12 @@
         <div class="field"><label for="f-distrito">Distrito donde vives o trabajas</label>
           <select class="select" id="f-distrito" name="distrito"><option value="">Elige un distrito</option>${DB.distritos.map((d) => `<option ${r.distrito === d ? "selected" : ""}>${d}</option>`).join("")}</select>
           ${fieldErr("distrito", e) || '<p class="hint">Sirve para calcular la distancia a cada banco de sangre. No pedimos tu dirección.</p>'}</div>
+        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="lbl" style="margin-bottom:6px">Sexo</legend>
+          <div class="seg" role="group" aria-label="Sexo">${[["F", "Mujer"], ["M", "Hombre"]].map(([k, l]) => `<button type="button" aria-pressed="${r.sexo === k}" data-act="reg-sexo" data-v="${k}">${l}</button>`).join("")}</div>
+          ${fieldErr("sexo", e) || '<p class="hint">Define cada cuánto puedes donar: cada 4 meses las mujeres y cada 3 los hombres.</p>'}</fieldset>
         <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="lbl" style="margin-bottom:6px">Tipo de sangre</legend>
           <div class="chips" role="radiogroup" aria-label="Tipo de sangre">${DB.tipos.map((t) => `<button type="button" class="chip-abo" role="radio" aria-checked="${r.tipo === t}" data-act="reg-tipo" data-v="${t}">${abo(t)}</button>`).join("")}</div>
-          <label class="check" style="margin-top:10px"><input type="checkbox" id="f-nosabe" data-act="reg-nosabe" ${r.noSabe ? "checked" : ""}><span>No conozco mi tipo de sangre<br><span class="cap">El banco de sangre lo confirmará en tu primera donación.</span></span></label>
+          ${ON() ? "" : `<label class="check" style="margin-top:10px"><input type="checkbox" id="f-nosabe" data-act="reg-nosabe" ${r.noSabe ? "checked" : ""}><span>No conozco mi tipo de sangre<br><span class="cap">El banco de sangre lo confirmará en tu primera donación.</span></span></label>`}
           ${fieldErr("tipo", e)}</fieldset>
         <button class="btn btn-primary btn-block" type="submit" ${ok ? "" : "disabled"}>Continuar</button>
         ${ok ? "" : '<p class="cap" style="text-align:center">Completa todos los campos para continuar.</p>'}
@@ -122,33 +138,43 @@
         <p class="cap">Versión 1.0 · Ley N.° 29733 y D.S. N.° 016-2024-JUS</p></div>
       <label class="check"><input type="checkbox" id="f-consent" data-act="consent" ${S.consent ? "checked" : ""}><span>Acepto que Donaria Connect use mis datos para enviarme convocatorias de donación voluntaria.</span></label>
       <label class="check"><input type="checkbox" id="f-sms" data-act="sms" ${S.sms ? "checked" : ""}><span>Si no tengo internet, avisarme también por SMS.</span></label>
-      <button class="btn btn-primary btn-block" data-act="crear" ${S.consent ? "" : "disabled"}>Crear mi registro</button>` });
+      <button class="btn btn-primary btn-block" data-act="crear" ${S.consent && !S.ocupado ? "" : "disabled"}>${S.ocupado ? "Guardando…" : "Crear mi registro"}</button>` });
 
-  const elegibleDesde = () => addDays(DB.donante.fecha_ultima_donacion, DB.donante.sexo === "F" ? 120 : 90);
+  // Sin donaciones previas no hay espera: puede donar desde hoy (si cumple lo demás).
+  const elegibleDesde = () => DB.donante.fecha_ultima_donacion ? addDays(DB.donante.fecha_ultima_donacion, DB.donante.sexo === "F" ? 120 : 90) : HOY();
+  const instDe = (id) => DB.instituciones.find((i) => i.id_institucion === id) || { razon_social: "Banco de sangre", direccion: "", distrito: "", horario: "—" };
+  const lugar = (i) => [i.direccion, i.distrito].filter(Boolean).join(", ");
+  const estadoDonante = (d, desde) => d.puede === true || (d.puede === undefined && desde <= HOY()) ? `<span class="pill pill-ok">Puedes donar</span>`
+    : d.motivo && !/^Podrás/.test(d.motivo) ? `<span class="pill pill-neutral">${esc(d.motivo.replace(/\.$/, ""))}</span>`
+    : `<span class="pill pill-neutral">Podrás donar desde el ${fecha(desde)}</span>`;
   const vHoy = () => {
-    const d = DB.donante, c = DB.convocatoriaDonante, inst = DB.instituciones.find((i) => i.id_institucion === c.institucion_id);
-    const desde = elegibleDesde(), apto = desde <= HOY;
-    const total = DB.donaciones.reduce((a, x) => a + (x.unidades_convocatoria || 0), 0);
-    return phone({ title: `Hola, ${esc(d.nombres.split(" ")[0])}`, sub: "Jueves 15 de octubre", tab: "hoy",
+    const d = DB.donante, c = DB.convocatoriaDonante, inst = c && instDe(c.institucion_id);
+    const desde = elegibleDesde();
+    const total = d.unidades ?? DB.donaciones.reduce((a, x) => a + (x.unidades_convocatoria || 0), 0);
+    return phone({ title: `Hola, ${esc(d.nombres.split(" ")[0])}`, sub: diaLargo(HOY()), tab: "hoy",
       body: `<section class="donor-card" aria-label="Tu tarjeta de donante">${aboLabel(d.tipo_sangre)}
           <div class="meta"><span class="name">${esc(d.nombres)}</span>
-          ${apto ? `<span class="pill pill-ok">Puedes donar</span>` : `<span class="pill pill-neutral">Podrás donar desde el ${fecha(desde)}</span>`}
-          <span class="cap">Última donación: ${fecha(d.fecha_ultima_donacion)}<br>Identidad verificada con Didit</span></div></section>
+          ${estadoDonante(d, desde)}
+          <span class="cap">${d.fecha_ultima_donacion ? `Última donación: ${fecha(d.fecha_ultima_donacion)}` : "Aún no tienes donaciones registradas"}<br>${d.estado_verificacion === "verificado" ? "Identidad verificada con Didit" : "Identidad por verificar con Didit"}</span></div></section>
         <section style="display:grid;gap:8px"><h2 class="group-title" style="padding:0 4px">Te necesitan cerca</h2>
-          <article class="call-card"><div class="top">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${abo(c.tipo_sangre)}<span class="cap">Recibida ${c.recibida} · ${c.distancia_km} km</span></div>
-            <h2>${inst.razon_social} necesita donantes ${c.tipo_sangre}</h2>
-            <p class="muted" style="font-size:var(--t-sub)">${inst.direccion}, ${inst.distrito}</p></div>
-            <a class="row" href="#d-convocatoria"><span class="grow" style="font-weight:600;color:var(--accent-text)">Ver detalle y responder</span><span class="chev">${ic("chev")}</span></a></article></section>
+          ${c ? `<article class="call-card"><div class="top">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${abo(c.tipo_sangre)}<span class="cap">Recibida ${c.recibida} · ${c.distancia_km} km</span>${c.respuesta === "voy" ? `<span class="pill pill-ok">Vas a ir</span>` : ""}</div>
+            <h2>${esc(inst.razon_social)} necesita donantes ${c.tipo_sangre}</h2>
+            <p class="muted" style="font-size:var(--t-sub)">${esc(lugar(inst))}</p></div>
+            <a class="row" href="#d-convocatoria"><span class="grow" style="font-weight:600;color:var(--accent-text)">Ver detalle y responder</span><span class="chev">${ic("chev")}</span></a></article>`
+          : `<p class="note note-neutral">${ic("bell")}<span>Por ahora ningún banco de sangre cercano necesita tu tipo. Te avisaremos por ${esc(d.canal || "WhatsApp")} cuando haga falta.</span></p>`}</section>
         <section class="group" style="padding:16px"><div class="impact"><span class="big num">${total}</span>
           <p style="font-size:var(--t-sub)">unidades reunieron las convocatorias en las que participaste. <a href="#d-historial">Ver historial</a></p></div></section>` });
   };
   const vConvocatoria = () => {
-    const c = DB.convocatoriaDonante, inst = DB.instituciones.find((i) => i.id_institucion === c.institucion_id), r = S.respuesta;
+    const c = DB.convocatoriaDonante;
+    if (!c) return phone({ title: "Convocatoria", back: ["d-hoy", "Hoy"], tab: "hoy",
+      body: `<p class="note note-neutral">${ic("info")}<span>No tienes convocatorias abiertas. Te avisaremos cuando tu tipo de sangre haga falta cerca de ti.</span></p>` });
+    const inst = instDe(c.institucion_id), r = S.respuesta;
     const maps = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(inst.razon_social + " " + inst.direccion + " Lima");
     return phone({ title: `Convocatoria ${c.tipo_sangre}`, sub: `${inst.razon_social} · a ${c.distancia_km} km`, back: ["d-hoy", "Hoy"], tab: "hoy",
       body: `<section class="group"><dl class="kv" style="padding:16px;margin:0">
-          <dt>Dónde</dt><dd>${inst.direccion}, ${inst.distrito}</dd><dt>Horario</dt><dd>${inst.horario}</dd><dt>Tipo</dt><dd>${abo(c.tipo_sangre)}</dd><dt>Lleva</dt><dd>Tu DNI</dd></dl></section>
+          <dt>Dónde</dt><dd>${esc(lugar(inst) || inst.razon_social)}</dd><dt>Horario</dt><dd>${esc(inst.horario)}</dd><dt>Tipo</dt><dd>${abo(c.tipo_sangre)}</dd><dt>Lleva</dt><dd>Tu DNI</dd></dl></section>
         <p class="note note-neutral">${ic("info")}<span>No necesitas reservar. Acércate en el horario de atención; el banco de sangre te hará una evaluación médica antes de donar.</span></p>
         <section style="display:grid;gap:8px"><h2 class="group-title" style="padding:0 4px">Antes de ir, confirma que</h2>
           <ul class="group" style="margin:0;padding:0">${["Tienes entre 18 y 60 años y pesas más de 50 kg", "Te sientes bien y comiste algo ligero", "No te hiciste un tatuaje en el último año", "No estás embarazada ni dando de lactar"].map((x) => `<li class="row">${ic("check")}<span class="grow">${x}</span></li>`).join("")}</ul></section>
@@ -164,7 +190,8 @@
   const vHistorial = () => {
     const d = DB.donante, desde = elegibleDesde();
     return phone({ title: "Historial", sub: `${DB.donaciones.length} donaciones registradas`, tab: "hist",
-      body: `<p class="note ${desde <= HOY ? "note-ok" : "note-neutral"}">${ic(desde <= HOY ? "check" : "clock")}<span>${desde <= HOY ? "Ya puedes volver a donar." : `Podrás volver a donar desde el ${fecha(desde)}.`} Entre donaciones de sangre total deben pasar ${d.sexo === "F" ? "4 meses en mujeres" : "3 meses en hombres"}.</span></p>
+      body: `<p class="note ${desde <= HOY() ? "note-ok" : "note-neutral"}">${ic(desde <= HOY() ? "check" : "clock")}<span>${desde <= HOY() ? (DB.donaciones.length ? "Ya puedes volver a donar." : "Cuando dones, aquí verás cada donación.") : `Podrás volver a donar desde el ${fecha(desde)}.`} Entre donaciones de sangre total deben pasar ${d.sexo === "F" ? "4 meses en mujeres" : "3 meses en hombres"}.</span></p>
+        ${DB.donaciones.length ? "" : `<p class="cap" style="padding:0 4px">Aún no hay donaciones registradas.</p>`}
         <ul class="group timeline" style="margin:0;padding:0">${DB.donaciones.map((x) => `<li class="row"><span class="dot ${x.unidades_convocatoria ? "" : "gray"}"></span>
           <span class="grow"><b>${fecha(x.fecha)}</b><br><span style="font-size:var(--t-sub)">${x.institucion}</span><br><span class="cap">${x.unidades_convocatoria ? `${x.tipo}: la convocatoria reunió ${x.unidades_convocatoria} unidades` : x.tipo}</span></span></li>`).join("")}</ul>
         <p class="cap" style="padding:0 4px">Las cifras son agregadas por convocatoria. Ninguna donación se asigna a un paciente.</p>` });
@@ -183,27 +210,38 @@
           <div class="row"><span class="grow">Canal</span><div class="seg" role="group" aria-label="Canal de aviso">${["WhatsApp", "SMS"].map((k) => `<button type="button" aria-pressed="${S.canal === k}" data-act="canal" data-v="${k}">${k}</button>`).join("")}</div></div></div>
           ${S.avisos ? "" : '<p class="cap" style="padding:0 4px">Avisos en pausa. No recibirás convocatorias hasta que los vuelvas a activar.</p>'}</section>
         <section style="display:grid;gap:6px"><h2 class="group-title">Privacidad</h2><div class="group">
-          <div class="row"><span class="grow">Consentimiento</span><span class="v">Versión ${c.version_texto} · ${fecha(c.fecha_hora)}</span></div>
+          <div class="row"><span class="grow">Consentimiento</span><span class="v">${c.vigente === false || !c.fecha_hora ? "Retirado" : `Versión ${c.version_texto} · ${fecha(c.fecha_hora)}`}</span></div>
           <button class="row" data-act="copia"><span class="grow">Pedir una copia de mis datos</span><span class="chev">${ic("chev")}</span></button>
           <button class="row" data-act="eliminar" style="color:var(--signal-text)"><span class="grow">Retirar consentimiento y eliminar mis datos</span></button></div>
-          ${S.confirmEliminar ? `<div class="note note-signal" role="alert" style="display:grid;gap:10px"><span>Se borrarán tu registro y tu historial. No podrás deshacerlo.</span>
+          ${S.confirmEliminar ? `<div class="note note-signal" role="alert" style="display:grid;gap:10px"><span>${ON() ? "Dejarás de recibir convocatorias y tu consentimiento quedará retirado. El borrado de tu historial se procesa en un máximo de 10 días." : "Se borrarán tu registro y tu historial. No podrás deshacerlo."}</span>
             <div class="btn-row"><button class="btn btn-plain" data-act="eliminar-no">Cancelar</button><button class="btn btn-primary" data-act="eliminar-si">Eliminar mis datos</button></div></div>` : ""}</section>` });
   };
 
   /* ======================= PANEL INSTITUCIONAL ======================= */
-  const inst = DB.instituciones[0];
+  const instPanel = () => DB.instituciones.find((i) => i.id_institucion === DB.usuario.id_institucion) || DB.instituciones[0];
   const pendientes = () => DB.alertas.filter((a) => a.estado === "Pendiente").length;
   const NAV = [
-    { sec: inst.razon_social, items: [["p-resumen", "Resumen", "chart"], ["p-necesidades", "Necesidades", "list"], ["p-reportes", "Reportes", "drop"]] },
+    { sec: "", items: [["p-resumen", "Resumen", "chart"], ["p-necesidades", "Necesidades", "list"], ["p-reportes", "Reportes", "drop"]] },
     { sec: "Equipo Donaria", items: [["a-alertas", "Alertas antifraude", "shield"], ["a-instituciones", "Instituciones", "building"]] },
   ];
   const panel = (cur, body, extra = "") => `<div class="panel">
       <aside class="side"><div class="brand"><span class="brand-mark">${dropFill}</span>Donaria Connect</div>
-        <nav aria-label="Panel">${NAV.map((g) => `<p class="sec">${g.sec}</p>${g.items.map(([h, l, i]) => `<a href="#${h}" ${cur === h ? 'aria-current="page"' : ""}>${ic(i)}${l}${h === "a-alertas" && pendientes() ? `<span class="count" aria-label="${pendientes()} pendientes">${pendientes()}</span>` : ""}</a>`).join("")}`).join("")}</nav>
-        <div class="who"><b>${DB.usuario.nombre}</b><span class="cap">${DB.usuario.rol}</span><a href="#inicio" class="cap">Mapa de pantallas</a></div></aside>
+        <nav aria-label="Panel">${NAV.map((g) => `<p class="sec">${esc(g.sec || instPanel().razon_social)}</p>${g.items.map(([h, l, i]) => `<a href="#${h}" ${cur === h ? 'aria-current="page"' : ""}>${ic(i)}${l}${h === "a-alertas" && pendientes() ? `<span class="count" aria-label="${pendientes()} pendientes">${pendientes()}</span>` : ""}</a>`).join("")}`).join("")}</nav>
+        <div class="who"><b>${DB.usuario.nombre}</b><span class="cap">${DB.usuario.rol}</span>${modoPill()}<a href="#inicio" class="cap">Mapa de pantallas</a></div></aside>
       <div class="panel-top"><div class="brand" style="padding:0"><span class="brand-mark">${dropFill}</span>Donaria Connect</div>
         <nav aria-label="Panel">${NAV.flatMap((g) => g.items).map(([h, l]) => `<a href="#${h}" ${cur === h ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav></div>
       <main class="main">${body}</main></div>${extra}`;
+  const modoPill = () => ON() ? `<span class="pill pill-ok">Conectado a la base</span>` : `<span class="pill pill-neutral">Datos de ejemplo</span>`;
+  // Unidades por semana (lunes a domingo) de las 8 últimas semanas, según la fecha de cada necesidad.
+  const semanasReales = () => {
+    const d = new Date(HOY() + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const lunes = Array.from({ length: 8 }, (_, i) => addDays(d.toISOString().slice(0, 10), -7 * (7 - i)));
+    return lunes.map((l, i) => {
+      const fin = i < 7 ? lunes[i + 1] : addDays(l, 7);
+      const v = DB.necesidades.filter((n) => n.fecha_creacion.slice(0, 10) >= l && n.fecha_creacion.slice(0, 10) < fin).reduce((a, n) => a + n.unidades_obtenidas, 0);
+      const [, m, dd] = l.split("-").map(Number); return [`${dd} ${MESES[m - 1]}`, v];
+    });
+  };
   const tot = (n) => n.olas.reduce((a, o) => ({ not: a.not + o.donantes_notificados, resp: a.resp + o.respondieron }), { not: 0, resp: 0 });
   const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) + " %" : "—");
   const meter = (n) => `<div style="display:grid;gap:4px;min-width:110px"><div class="meter ${n.unidades_obtenidas >= n.unidades_meta ? "done" : ""}" role="img" aria-label="${n.unidades_obtenidas} de ${n.unidades_meta} unidades"><i style="width:${Math.min(100, (100 * n.unidades_obtenidas) / n.unidades_meta)}%"></i></div><span class="cap num">${n.unidades_obtenidas} de ${n.unidades_meta} unidades</span></div>`;
@@ -213,29 +251,30 @@
     const act = DB.necesidades.filter((n) => n.estado === "Activa");
     const unidades = DB.necesidades.reduce((a, n) => a + n.unidades_obtenidas, 0);
     const t = DB.necesidades.reduce((a, n) => { const x = tot(n); return { not: a.not + x.not, resp: a.resp + x.resp }; }, { not: 0, resp: 0 });
-    const semanas = [["24 ago", 6], ["31 ago", 9], ["7 set", 7], ["14 set", 12], ["21 set", 10], ["28 set", 14], ["5 oct", 16], ["12 oct", 11]];
-    const max = 16;
-    return panel("p-resumen", `<div class="head"><div><h1>Resumen</h1><p class="sub">${inst.razon_social} · octubre de 2026</p></div>
+    const semanas = ON() ? semanasReales() : [["24 ago", 6], ["31 ago", 9], ["7 set", 7], ["14 set", 12], ["21 set", 10], ["28 set", 14], ["5 oct", 16], ["12 oct", 11]];
+    const max = Math.max(1, ...semanas.map(([, v]) => v));
+    return panel("p-resumen", `<div class="head"><div><h1>Resumen</h1><p class="sub">${esc(instPanel().razon_social)} · ${mesLargo(HOY())}</p></div>
         <a class="btn btn-primary" href="#p-nueva">${ic("plus")}Nueva necesidad</a></div>
       <section class="kpis" aria-label="Indicadores del mes">
-        <div class="kpi"><span class="l">Unidades conseguidas</span><span class="v">${unidades}</span><span class="d">Octubre, por convocatorias</span></div>
+        <div class="kpi"><span class="l">Unidades conseguidas</span><span class="v">${unidades}</span><span class="d">${ON() ? "Todas las convocatorias" : "Octubre, por convocatorias"}</span></div>
         <div class="kpi"><span class="l">Conversión</span><span class="v">${pct(t.resp, t.not)}</span><span class="d">Respondieron / notificados · meta ≥ 6 %</span></div>
-        <div class="kpi"><span class="l">Convocatorias activas</span><span class="v">${act.length}</span><span class="d">${act.map((n) => n.tipo_sangre).join(" y ")}</span></div>
-        <div class="kpi"><span class="l">Donantes verificados</span><span class="v">412</span><span class="d">A menos de 6 km de la clínica</span></div></section>
+        <div class="kpi"><span class="l">Convocatorias activas</span><span class="v">${act.length}</span><span class="d">${act.map((n) => n.tipo_sangre).join(", ").replace(/, ([^,]*)$/, " y $1")}</span></div>
+        <div class="kpi"><span class="l">Donantes verificados</span><span class="v">${DB.verificados6km ?? 412}</span><span class="d">A menos de 6 km de la clínica</span></div></section>
       <div class="grid-2">
         <section class="card"><div class="head" style="align-items:center"><h2>Convocatorias activas</h2><a class="crumb" href="#p-necesidades" style="margin:0">Ver todas</a></div>
           <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tipo</th><th>Avance</th><th>Olas</th><th class="r">Respondieron</th></tr></thead><tbody>
           ${act.map((n) => `<tr class="link" data-act="nav" data-to="p-conv-${n.id_necesidad}" tabindex="0"><td>${abo(n.tipo_sangre)}</td><td>${meter(n)}</td><td class="num">${n.olas.length}</td><td class="r num">${tot(n).resp} de ${tot(n).not}</td></tr>`).join("")}
           </tbody></table></div></section>
         <section class="card"><h2>Unidades por semana</h2>
-          <div class="bars" role="img" aria-label="Unidades por semana, de 6 a 16; semana actual 11 hasta hoy">${semanas.map(([s, v], i) => `<div class="b ${i < 7 ? "past" : ""}"><span>${v}</span><i style="height:${(v / max) * 110}px"></i></div>`).join("")}</div>
+          <div class="bars" role="img" aria-label="Unidades por semana: ${semanas.map(([s, v]) => `${s}, ${v}`).join("; ")}">${semanas.map(([s, v], i) => `<div class="b ${i < 7 ? "past" : ""}"><span>${v}</span><i style="height:${(v / max) * 110}px"></i></div>`).join("")}</div>
           <div class="bars-x">${semanas.map(([s]) => `<span>${s}</span>`).join("")}</div>
-          <p class="cap">Semana actual en granate. Incluye solo unidades confirmadas por el banco de sangre.</p></section></div>
+          <p class="cap">Semana actual en granate. Incluye solo unidades confirmadas por el banco de sangre${ON() ? ", contadas en la semana en que se creó cada necesidad" : ""}.</p></section></div>
       <p class="note note-neutral">${ic("info")}<span>Este panel nunca muestra nombres de donantes ni datos de pacientes. Las convocatorias son por tipo de sangre y zona.</span></p>`, sheet);
   };
 
   const ESTIM = { "O+": 96, "O-": 38, "A+": 52, "A-": 14, "B+": 19, "B-": 6, "AB+": 9, "AB-": 3 };
-  const estimado = () => Math.round((ESTIM[S.nueva.tipo] || 0) * (S.nueva.radio === 3 ? 1 : S.nueva.radio === 6 ? 1.9 : 3.1));
+  const estimado = () => ON() ? window.API.estimado(S.nueva.tipo, S.nueva.radio, () => location.hash === "#p-nueva" && render())
+    : Math.round((ESTIM[S.nueva.tipo] || 0) * (S.nueva.radio === 3 ? 1 : S.nueva.radio === 6 ? 1.9 : 3.1));
   const vNueva = () => {
     const n = S.nueva;
     const sheet = `<div class="sheet-backdrop" data-act="cerrar-sheet" data-self="1"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="t-nueva">
@@ -249,9 +288,9 @@
           <div class="seg" role="group" aria-labelledby="l-radio">${[3, 6, 10].map((r) => `<button type="button" aria-pressed="${n.radio === r}" data-act="n-radio" data-v="${r}">${r} km</button>`).join("")}</div>
           <p class="hint">Si la respuesta no alcanza, puedes lanzar una nueva ola con un radio mayor.</p></div>
         <p class="note note-signal">${ic("alert")}<span>No escribas el nombre ni datos del paciente. Donaria Connect convoca por tipo de sangre y zona, nunca por paciente.</span></p>
-        ${n.tipo ? `<p class="note note-neutral">${ic("bell")}<span>Se avisará a unos <b class="num">${estimado()}</b> donantes ${n.tipo} verificados y aptos a menos de ${n.radio} km.</span></p>` : ""}
+        ${n.tipo ? `<p class="note note-neutral" aria-live="polite">${ic("bell")}<span>${estimado() === null ? "Contando donantes aptos…" : `Se avisará a ${ON() ? "" : "unos "}<b class="num">${estimado()}</b> donantes ${n.tipo} verificados y aptos a menos de ${n.radio} km.`}</span></p>` : ""}
       </div>
-      <footer><button class="btn btn-plain" data-act="cerrar-sheet">Cancelar</button><button class="btn btn-primary" data-act="lanzar" ${n.tipo ? "" : "disabled"}>Lanzar convocatoria</button></footer></div></div>`;
+      <footer><button class="btn btn-plain" data-act="cerrar-sheet">Cancelar</button><button class="btn btn-primary" data-act="lanzar" ${n.tipo && !S.ocupado ? "" : "disabled"}>${S.ocupado ? "Lanzando…" : "Lanzar convocatoria"}</button></footer></div></div>`;
     return vResumen(sheet);
   };
 
@@ -271,8 +310,8 @@
     if (S.unidadesInput === null) S.unidadesInput = n.unidades_obtenidas;
     return panel("p-necesidades", `<div class="head"><div><a class="crumb" href="#p-necesidades">${ic("back")}Necesidades</a>
         <h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Convocatoria ${abo(n.tipo_sangre)} ${estadoPill(n.estado)}</h1>
-        <p class="sub">N.° ${n.id_necesidad} · creada ${fecha(n.fecha_creacion)}, ${n.fecha_creacion.slice(11)} · ${n.zona}</p></div>
-        ${n.estado === "Activa" && next ? `<button class="btn btn-primary" data-act="ola" data-id="${n.id_necesidad}">${ic("bell")}Lanzar ola ${n.olas.length + 1} · ${next} km</button>` : ""}</div>
+        <p class="sub">N.° ${n.id_necesidad} · creada ${fecha(n.fecha_creacion)}, ${n.fecha_creacion.slice(11)} · ${esc(n.zona)}</p></div>
+        ${n.estado === "Activa" && next ? `<button class="btn btn-primary" data-act="ola" data-id="${n.id_necesidad}" ${S.ocupado ? "disabled" : ""}>${ic("bell")}Lanzar ola ${n.olas.length + 1} · ${next} km</button>` : ""}</div>
       <section class="kpis"><div class="kpi"><span class="l">Unidades</span><span class="v num">${n.unidades_obtenidas}/${n.unidades_meta}</span></div>
         <div class="kpi"><span class="l">Notificados</span><span class="v num">${t.not}</span></div>
         <div class="kpi"><span class="l">Respondieron</span><span class="v num">${t.resp}</span></div>
@@ -284,9 +323,9 @@
       ${n.estado === "Activa" ? `<div class="grid-2"><section class="card"><h2>Registrar unidades obtenidas</h2>
           <p class="muted" style="font-size:var(--t-sub)">Ingresa el total de unidades extraídas a donantes que llegaron por esta convocatoria, después del tamizaje.</p>
           <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="stepper" role="group" aria-label="Unidades obtenidas"><button type="button" data-act="u" data-v="-1" aria-label="Restar">−</button><output aria-live="polite">${S.unidadesInput}</output><button type="button" data-act="u" data-v="1" aria-label="Sumar">+</button></div>
-          <button class="btn btn-primary" data-act="guardar-u" data-id="${n.id_necesidad}" ${S.unidadesInput === n.unidades_obtenidas ? "disabled" : ""}>Guardar unidades</button></div></section>
+          <button class="btn btn-primary" data-act="guardar-u" data-id="${n.id_necesidad}" ${S.unidadesInput === n.unidades_obtenidas || S.ocupado ? "disabled" : ""}>Guardar unidades</button></div></section>
         <section class="card"><h2>Cerrar convocatoria</h2><p class="muted" style="font-size:var(--t-sub)">Al cerrar, dejamos de avisar y los donantes que respondieron reciben un agradecimiento.</p>
-          ${S.cerrarConfirm ? `<div class="note note-signal" role="alert" style="display:grid;gap:10px"><span>¿Cerrar con ${n.unidades_obtenidas} de ${n.unidades_meta} unidades?</span><div class="btn-row"><button class="btn btn-plain" data-act="cerrar-no">Cancelar</button><button class="btn btn-primary" data-act="cerrar-si" data-id="${n.id_necesidad}">Cerrar convocatoria</button></div></div>`
+          ${S.cerrarConfirm ? `<div class="note note-signal" role="alert" style="display:grid;gap:10px"><span>¿Cerrar con ${n.unidades_obtenidas} de ${n.unidades_meta} unidades?</span><div class="btn-row"><button class="btn btn-plain" data-act="cerrar-no">Cancelar</button><button class="btn btn-primary" data-act="cerrar-si" data-id="${n.id_necesidad}" ${S.ocupado ? "disabled" : ""}>Cerrar convocatoria</button></div></div>`
             : `<div><button class="btn btn-plain" data-act="cerrar">Cerrar convocatoria</button></div>`}</section></div>`
         : `<p class="note note-ok">${ic("check")}<span>Convocatoria cerrada con ${n.unidades_obtenidas} de ${n.unidades_meta} unidades.</span></p>`}`);
   };
@@ -303,7 +342,7 @@
   const vReportes = () => {
     const rows = DB.necesidades.slice().reverse();
     const T = rows.reduce((a, n) => { const t = tot(n); return { meta: a.meta + n.unidades_meta, ob: a.ob + n.unidades_obtenidas, olas: a.olas + n.olas.length, not: a.not + t.not, resp: a.resp + t.resp }; }, { meta: 0, ob: 0, olas: 0, not: 0, resp: 0 });
-    return panel("p-reportes", `<div class="head"><div><h1>Reportes</h1><p class="sub">Resultados agregados por convocatoria · octubre de 2026</p></div>
+    return panel("p-reportes", `<div class="head"><div><h1>Reportes</h1><p class="sub">Resultados agregados por convocatoria · ${ON() ? "todas las fechas" : "octubre de 2026"}</p></div>
         <button class="btn btn-plain" data-act="copiar">${ic("copy")}Copiar tabla</button></div>
       <section class="card" style="padding:6px"><div class="tbl-wrap"><table class="tbl" id="tbl-reporte"><thead><tr><th>Fecha</th><th>Tipo</th><th class="r">Meta</th><th class="r">Obtenidas</th><th class="r">Olas</th><th class="r">Notificados</th><th class="r">Respondieron</th><th class="r">Conversión</th></tr></thead><tbody>
       ${rows.map((n) => { const t = tot(n); return `<tr><td class="num">${fecha(n.fecha_creacion)}</td><td>${abo(n.tipo_sangre)}</td><td class="r num">${n.unidades_meta}</td><td class="r num">${n.unidades_obtenidas}</td><td class="r num">${n.olas.length}</td><td class="r num">${t.not}</td><td class="r num">${t.resp}</td><td class="r num">${pct(t.resp, t.not)}</td></tr>`; }).join("")}
@@ -322,20 +361,21 @@
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="lbl" style="margin-bottom:8px">Decisión</legend>
           ${[["falsa", "Falsa alarma: cerrar la alerta"], ["pausar", "Pausar avisos a este donante mientras se aclara"], ["escalar", "Pedir a la institución que verifique sus registros"]].map(([v, l]) => `<label class="check" style="padding:6px 0"><input type="radio" name="dec" data-act="dec" value="${v}" ${S.decision === v ? "checked" : ""} style="width:22px;height:22px;accent-color:var(--accent)"><span>${l}</span></label>`).join("")}</fieldset>
           <div class="field"><label for="f-nota">Nota interna</label><textarea class="input" id="f-nota" rows="3" data-act="nota" placeholder="Qué revisaste y por qué decidiste así">${esc(S.nota)}</textarea></div></div>
-        <footer><button class="btn btn-plain" data-act="cerrar-alerta">Cancelar</button><button class="btn btn-primary" data-act="guardar-alerta" ${S.decision ? "" : "disabled"}>Guardar revisión</button></footer></div></div>` : "";
+        <footer><button class="btn btn-plain" data-act="cerrar-alerta">Cancelar</button><button class="btn btn-primary" data-act="guardar-alerta" ${S.decision && !S.ocupado ? "" : "disabled"}>Guardar revisión</button></footer></div></div>` : "";
     return panel("a-alertas", `<div class="head"><div><h1>Alertas antifraude</h1><p class="sub">Equipo Donaria · cada alerta se revisa en menos de 72 horas</p></div></div>
       <section class="kpis"><div class="kpi"><span class="l">Pendientes</span><span class="v">${pend.length}</span></div>
         <div class="kpi"><span class="l">Vencen en menos de 24 h</span><span class="v" style="color:${urg.length ? "var(--signal-text)" : "inherit"}">${urg.length}</span></div>
-        <div class="kpi"><span class="l">Revisadas este mes</span><span class="v">${DB.alertas.length - pend.length + 11}</span></div>
+        <div class="kpi"><span class="l">${ON() ? "Revisadas en total" : "Revisadas este mes"}</span><span class="v">${DB.alertasRevisadas ?? DB.alertas.length - pend.length + 11}</span></div>
         <div class="kpi"><span class="l">Revisadas a tiempo</span><span class="v">100 %</span><span class="d">Meta del criterio de aceptación</span></div></section>
       <section class="card" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Alerta</th><th>Donante</th><th>Regla que se activó</th><th>Institución</th><th>Plazo</th><th></th></tr></thead><tbody>
+      ${DB.alertas.length ? "" : `<tr><td colspan="6" style="text-align:center;padding:32px" class="muted">No hay alertas pendientes.</td></tr>`}
       ${DB.alertas.map((x) => `<tr><td class="num">${x.id_alerta}<br><span class="cap">${fecha(x.fecha)}</span></td><td class="num">${x.donante}<br><span class="cap">DNI ${x.dni_mask}</span></td><td style="min-width:240px">${x.regla}</td><td>${x.institucion}</td><td>${slaPill(x)}</td>
         <td>${x.estado === "Pendiente" ? `<button class="btn btn-plain" data-act="abrir-alerta" data-id="${x.id_alerta}">Revisar</button>` : `<span class="cap">${x.decision || "Falsa alarma"}</span>`}</td></tr>`).join("")}
       </tbody></table></div></section>`, sheet);
   };
   const vInstituciones = () => panel("a-instituciones", `<div class="head"><div><h1>Instituciones</h1><p class="sub">Red de bancos de sangre afiliados · Lima Metropolitana y Callao</p></div></div>
     <section class="card" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Institución</th><th>Distrito</th><th>Autorización sanitaria</th><th>Afiliación</th><th>Licencia</th></tr></thead><tbody>
-    ${DB.instituciones.map((i) => `<tr><td><b>${i.razon_social}</b><br><span class="cap">${i.direccion}</span></td><td>${i.distrito}</td><td><span class="pill pill-ok">${i.autorizacion_sanitaria}</span></td><td><span class="pill ${i.estado_afiliacion === "Piloto" ? "pill-accent" : "pill-neutral"}">${i.estado_afiliacion}</span></td><td class="num">${i.estado_afiliacion === "Piloto" ? "S/ 1,500 al mes, fija" : "—"}</td></tr>`).join("")}
+    ${DB.instituciones.map((i) => `<tr><td><b>${esc(i.razon_social)}</b><br><span class="cap">${esc(i.direccion)}</span></td><td>${esc(i.distrito)}</td><td><span class="pill pill-ok">${i.autorizacion_sanitaria}</span></td><td><span class="pill ${i.estado_afiliacion === "Piloto" ? "pill-accent" : "pill-neutral"}">${i.estado_afiliacion}</span></td><td class="num">${i.estado_afiliacion === "Piloto" ? "S/ 1,500 al mes, fija" : "—"}</td></tr>`).join("")}
     </tbody></table></div></section>
     <p class="note note-neutral">${ic("info")}<span>Antes de afiliar una institución verificamos su autorización sanitaria vigente. La tarifa es fija y nunca se calcula por unidad obtenida.</span></p>`);
 
@@ -376,6 +416,7 @@
   ];
   const vHub = () => `<div class="hub"><header class="hub-head"><h1><span class="brand-mark" style="width:40px;height:40px;border-radius:11px">${dropFill}</span>Donaria Connect</h1>
       <p class="muted">Prototipo navegable de la Fase I. Convoca donantes voluntarios por tipo de sangre y zona, nunca por paciente. Todos los datos son ficticios.</p>
+      <p style="display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:var(--t-sub)">${modoPill()}<span class="cap">${ON() ? `Donante de la app: N.° ${DB.donante.id_donante}${window.API.donanteRegistrado ? ` · <button class="btn btn-text" style="min-height:0;padding:0" data-act="donante-demo">Volver al donante de demostración</button>` : ""}` : window.API && window.API.error ? `Sin conexión con la API (${esc(window.API.base)}). Para usar la base, levanta la API y recarga.` : ""}</span></p>
       <div class="legend"><span>${abo("O+")} ${abo("A+")} ${abo("B+")} ${abo("AB+")} Código de color ISBT 128</span><span class="pill pill-accent">Acción principal</span><span class="pill pill-ok">Confirmado o apto</span><span class="pill pill-signal">Requiere atención</span></div></header>
     <div class="hub-grid">${SCREENS.map((g) => `<section class="group"><div class="gh"><h2>${g.t}</h2><p class="cap">${g.d}</p></div>
       ${g.l.map(([h, l]) => `<a class="row" href="#${h}"><span class="grow">${l}<span class="cap num">#${h}</span></span><span class="chev">${ic("chev")}</span></a>`).join("")}</section>`).join("")}</div></div>`;
@@ -424,47 +465,88 @@
     const N = (id) => DB.necesidades.find((x) => x.id_necesidad === Number(id));
     switch (a) {
       case "nav": go(el.dataset.to); break;
+      case "reg-sexo": S.reg.sexo = v; S.reg.touched.sexo = true; render(); break;
+      case "donante-demo": conApi(async () => { await window.API.usarDonanteDemo(); S.respuesta = DB.convocatoriaDonante?.respuesta || null; toast(`Ahora ves la app como el donante N.° ${DB.donante.id_donante}.`); }); break;
       case "reg-tipo": S.reg.tipo = v; S.reg.noSabe = false; S.reg.touched.tipo = true; render(); break;
       case "reg-nosabe": S.reg.noSabe = el.checked; if (el.checked) S.reg.tipo = ""; S.reg.touched.tipo = true; render(); break;
       case "verif": { const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; let i = 1; S.verif = 1; render();
         const tick = () => { i++; S.verif = i; render(); if (i < 4) setTimeout(tick, reduce ? 250 : 1100); }; setTimeout(tick, reduce ? 250 : 1100); break; }
       case "consent": S.consent = el.checked; render(); break;
       case "sms": S.sms = el.checked; break;
-      case "crear": go("d-hoy"); toast("Registro creado. Te avisaremos cuando te necesiten."); break;
-      case "resp": S.respuesta = v || null; render(); break;
+      case "crear":
+        if (!ON()) { go("d-hoy"); toast("Registro creado. Te avisaremos cuando te necesiten."); break; }
+        conApi(async () => {
+          const r = S.reg;
+          const res = await window.API.registrar({ dni: r.dni, nombres: r.nombres.trim(), sexo: r.sexo, tipo_sangre: r.tipo, distrito: r.distrito,
+            telefono_whatsapp: r.cel.replace(/\s/g, ""), acepta_consentimiento: true });
+          S.reg = { nombres: "", dni: "", cel: "", distrito: "", sexo: "", tipo: "", noSabe: false, touched: {} }; S.verif = 0; S.consent = false;
+          S.respuesta = null; go("d-hoy"); toast(`Registro creado (donante N.° ${res.id_donante}). Te avisaremos cuando te necesiten.`);
+        });
+        break;
+      case "resp":
+        if (!ON()) { S.respuesta = v || null; render(); break; }
+        conApi(async () => { await window.API.responder(DB.convocatoriaDonante.id_necesidad, v || null); S.respuesta = v || null;
+          if (v) toast(v === "voy" ? "Respuesta guardada. La clínica solo ve cuántos van." : "Respuesta guardada."); });
+        break;
       case "avisos": S.avisos = el.checked; render(); toast(el.checked ? "Avisos activados" : "Avisos en pausa"); break;
       case "canal": S.canal = v; render(); break;
       case "copia": toast("Te enviaremos una copia de tus datos por WhatsApp en un máximo de 48 horas."); break;
       case "eliminar": S.confirmEliminar = true; render(); break;
       case "eliminar-no": S.confirmEliminar = false; render(); break;
-      case "eliminar-si": S.confirmEliminar = false; go("preregistro"); toast("Tus datos fueron eliminados."); break;
+      case "eliminar-si":
+        S.confirmEliminar = false;
+        if (!ON()) { go("preregistro"); toast("Tus datos fueron eliminados."); break; }
+        conApi(async () => { await window.API.revocar(); toast("Retiramos tu consentimiento. Ya no recibirás convocatorias."); });
+        break;
       case "n-tipo": S.nueva.tipo = v; render(); break;
       case "n-meta": S.nueva.meta = Math.max(1, Math.min(20, S.nueva.meta + Number(v))); render(); break;
       case "n-radio": S.nueva.radio = Number(v); render(); break;
       case "cerrar-sheet": go("p-resumen"); break;
-      case "lanzar": { const id = Math.max(...DB.necesidades.map((x) => x.id_necesidad)) + 1, est = estimado();
-        DB.necesidades.unshift({ id_necesidad: id, tipo_sangre: S.nueva.tipo, zona: "Miraflores y alrededores", unidades_meta: S.nueva.meta, estado: "Activa", fecha_creacion: HOY + " 13:05",
+      case "lanzar": if (ON()) {
+          conApi(async () => { const { id, notificados } = await window.API.crearNecesidad(S.nueva.tipo, S.nueva.meta, S.nueva.radio);
+            S.nueva = { tipo: "", meta: 4, radio: 3 }; go("p-conv-" + id); toast(`Convocatoria lanzada: se avisó a ${notificados} donantes`); });
+          break;
+        } else { const id = Math.max(...DB.necesidades.map((x) => x.id_necesidad)) + 1, est = estimado();
+        DB.necesidades.unshift({ id_necesidad: id, tipo_sangre: S.nueva.tipo, zona: "Miraflores y alrededores", unidades_meta: S.nueva.meta, estado: "Activa", fecha_creacion: HOY() + " 13:05",
           olas: [{ numero_ola: 1, radio_km: S.nueva.radio, donantes_notificados: est, respondieron: 0, fecha_envio: "13:05" }], unidades_obtenidas: 0 });
         S.nueva = { tipo: "", meta: 4, radio: 3 }; go("p-conv-" + id); toast(`Convocatoria lanzada: ola 1 enviada a ${est} donantes`); break; }
-      case "ola": { const n = N(el.dataset.id), r = [3, 6, 10].find((x) => !n.olas.some((o) => o.radio_km === x)), cnt = Math.round((ESTIM[n.tipo_sangre] || 20) * (r === 6 ? 0.9 : 1.2));
+      case "ola": if (ON()) {
+          conApi(async () => { const o = await window.API.lanzarOla(Number(el.dataset.id));
+            toast(o.donantes_notificados ? `Ola ${o.numero_ola} enviada a ${o.donantes_notificados} donantes nuevos a menos de ${o.radio_km} km` : `Ola ${o.numero_ola} lanzada: no hay donantes nuevos aptos a menos de ${o.radio_km} km`); });
+          break;
+        } else { const n = N(el.dataset.id), r = [3, 6, 10].find((x) => !n.olas.some((o) => o.radio_km === x)), cnt = Math.round((ESTIM[n.tipo_sangre] || 20) * (r === 6 ? 0.9 : 1.2));
         n.olas.push({ numero_ola: n.olas.length + 1, radio_km: r, donantes_notificados: cnt, respondieron: 0, fecha_envio: "13:10" }); render(); toast(`Ola ${n.olas.length} enviada a ${cnt} donantes a menos de ${r} km`); break; }
       case "u": S.unidadesInput = Math.max(0, Math.min(40, S.unidadesInput + Number(v))); render(); break;
-      case "guardar-u": { const n = N(el.dataset.id); n.unidades_obtenidas = S.unidadesInput; render(); toast(`Unidades guardadas: ${n.unidades_obtenidas} de ${n.unidades_meta}`); break; }
+      case "guardar-u": if (ON()) {
+          conApi(async () => { const id = Number(el.dataset.id); await window.API.guardarUnidades(id, S.unidadesInput); const n = N(id);
+            toast(`Unidades guardadas: ${n.unidades_obtenidas} de ${n.unidades_meta}`); });
+          break;
+        } else { const n = N(el.dataset.id); n.unidades_obtenidas = S.unidadesInput; render(); toast(`Unidades guardadas: ${n.unidades_obtenidas} de ${n.unidades_meta}`); break; }
       case "cerrar": S.cerrarConfirm = true; render(); break;
       case "cerrar-no": S.cerrarConfirm = false; render(); break;
-      case "cerrar-si": { const n = N(el.dataset.id); n.estado = "Cerrada"; S.cerrarConfirm = false; render(); toast("Convocatoria cerrada"); break; }
+      case "cerrar-si": if (ON()) {
+          conApi(async () => { const n = N(el.dataset.id); S.cerrarConfirm = false; await window.API.guardarUnidades(n.id_necesidad, n.unidades_obtenidas, true); toast("Convocatoria cerrada"); });
+          break;
+        } else { const n = N(el.dataset.id); n.estado = "Cerrada"; S.cerrarConfirm = false; render(); toast("Convocatoria cerrada"); break; }
       case "filtro": S.filtro = v; render(); break;
       case "copiar": { const tb = document.getElementById("tbl-reporte"); const txt = [...tb.rows].map((r) => [...r.cells].map((c) => c.innerText.trim()).join("\t")).join("\n");
         navigator.clipboard?.writeText(txt).then(() => toast("Tabla copiada. Pégala en Excel."), () => { const r = document.createRange(); r.selectNodeContents(tb); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Tabla seleccionada: usa Ctrl+C para copiarla."); }); break; }
       case "abrir-alerta": S.alertaAbierta = Number(el.dataset.id); S.decision = ""; S.nota = ""; render(); break;
       case "cerrar-alerta": S.alertaAbierta = null; render(); break;
       case "dec": S.decision = el.value; render(); break;
-      case "guardar-alerta": { const x = DB.alertas.find((q) => q.id_alerta === S.alertaAbierta); x.estado = "Revisada";
+      case "guardar-alerta": if (ON()) {
+          conApi(async () => { const x = DB.alertas.find((q) => q.id_alerta === S.alertaAbierta);
+            await window.API.revisarAlerta(x.id_alerta, S.decision, S.nota);
+            x.estado = "Revisada"; x.decision = { falsa: "Falsa alarma", pausar: "Avisos pausados", escalar: "Enviada a la institución" }[S.decision];
+            DB.alertasRevisadas = (DB.alertasRevisadas || 0) + 1; S.alertaAbierta = null; toast(`Alerta ${x.id_alerta} revisada: ${x.decision.toLowerCase()}`); });
+          break;
+        } else { const x = DB.alertas.find((q) => q.id_alerta === S.alertaAbierta); x.estado = "Revisada";
         x.decision = { falsa: "Falsa alarma", pausar: "Avisos pausados", escalar: "Enviada a la institución" }[S.decision]; S.alertaAbierta = null; render(); toast(`Alerta ${x.id_alerta} revisada: ${x.decision.toLowerCase()}`); break; }
       case "pre-tipo": S.pre.tipo = S.pre.tipo === v ? "" : v; render(); break;
       case "pre-acepto": S.pre.acepto = el.checked; render(); break;
     }
   });
   window.addEventListener("hashchange", render);
-  render();
+  // Espera a que api.js cargue los datos de la base (o decida usar los de ejemplo) antes de dibujar.
+  (window.API ? window.API.listo : Promise.resolve()).then(() => { S.respuesta = DB.convocatoriaDonante?.respuesta || null; render(); });
 })();

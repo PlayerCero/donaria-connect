@@ -1,6 +1,14 @@
-# Prototipo navegable – Donaria Connect
+# Web de Donaria Connect (prototipo conectado)
 
-Abre `index.html` en el navegador (doble clic). No necesita instalar nada ni internet.
+Funciona de dos formas, sin instalar nada en la web:
+
+- **Conectada a la base (fase 3).** Si la API responde en `http://127.0.0.1:8000`, `js/api.js` carga los datos de
+  Azure SQL y las acciones se guardan de verdad. En el mapa de pantallas y en el panel aparece *Conectado a la base*.
+  La forma más simple de levantar todo es `scripts/abrir_demo.ps1` (abre <http://127.0.0.1:5500>).
+- **Con datos de ejemplo.** Si la API no responde (o con `index.html?modo=ejemplo`), usa `js/data.js`, como el
+  prototipo original: basta abrir `index.html` con doble clic.
+
+Otra dirección de API: `index.html?api=https://mi-api…` (se recuerda en el navegador).
 
 | Superficie | Rutas |
 | --- | --- |
@@ -16,8 +24,20 @@ Abre `index.html` en el navegador (doble clic). No necesita instalar nada ni int
 - Panel: ventana ancha (1360 px o más).
 - Modo oscuro: cambia el tema del sistema operativo; la app lo sigue sola.
 
-## Para conectarlo a la base de datos real
-`js/data.js` usa los mismos nombres de tablas y columnas que el modelo de SQL Server. Reemplázalo por llamadas
-a la API (por ejemplo `fetch('/api/necesidades')`) sin tocar las pantallas.
+## Qué se guarda en la base cuando está conectada
+
+| Pantalla | Acción | Ruta de la API |
+| --- | --- | --- |
+| Registro (paso 3) | Crear mi registro | `POST /donantes` (DNI con hash, consentimiento) |
+| Hoy / Convocatoria | Voy a ir · Esta vez no puedo | `PUT /donantes/me/convocatorias/{id}/respuesta` |
+| Perfil | Retirar consentimiento | `DELETE /donantes/me/consentimiento` |
+| Nueva necesidad | Lanzar convocatoria (olas hasta el radio elegido) | `POST /necesidades` + `POST /necesidades/{id}/olas` |
+| Convocatoria | Lanzar ola · Guardar unidades · Cerrar | `POST …/olas` · `POST …/resultado` |
+| Alertas | Guardar revisión (la decisión queda en auditoría) | `PATCH /alertas/{id}/revisar` |
+
+La verificación con Didit sigue simulada hasta la fase 4. La app del donante muestra al donante que recibió el
+último aviso (o al que te registraste desde ese navegador; en el mapa de pantallas puedes volver al de demostración).
+El panel entra como la clínica 1 (Clínica Delgado Auna). Dirección y horario de cada clínica vienen de `data.js`
+porque la base no los guarda.
 
 Fuente de los grupos sanguíneos: Barlow Semi Condensed (licencia OFL, en `fonts/`), solo para cifras y rótulos.

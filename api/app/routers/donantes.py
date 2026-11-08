@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from ..config import settings
 from ..db import Database, get_db
 from ..distritos import DISTRITOS
-from ..schemas import DonacionOut, PerfilDonanteOut, RegistroDonanteIn, RegistroDonanteOut
+from ..schemas import (ConvocatoriaDonanteOut, DonacionOut, PerfilDonanteOut, RegistroDonanteIn,
+                       RegistroDonanteOut, RespuestaIn)
 from ..security import Usuario, crear_token, requiere
 
 router = APIRouter(prefix="/donantes", tags=["donantes"])
@@ -29,9 +30,17 @@ SELECT @id AS id_donante;
 """
 
 _SQL_PERFIL = """
-SELECT d.id_donante, d.nombres, d.dni_ult4, d.sexo, d.tipo_sangre, d.distrito, d.estado_verificacion,
+SELECT d.id_donante, d.nombres, d.dni_ult4, d.sexo, d.tipo_sangre, d.distrito, d.telefono_whatsapp,
+       d.estado_verificacion,
        CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.CONSENTIMIENTO c
                               WHERE c.id_donante = d.id_donante AND c.vigente = 1) THEN 1 ELSE 0 END AS BIT) AS consentimiento_vigente,
+       (SELECT MAX(c.fecha_hora) FROM dbo.CONSENTIMIENTO c
+         WHERE c.id_donante = d.id_donante AND c.vigente = 1) AS consentimiento_fecha,
+       (SELECT ISNULL(SUM(ra.unidades_obtenidas), 0) FROM dbo.RESULTADO_AGREGADO ra
+         WHERE ra.id_necesidad IN (SELECT o.id_necesidad FROM dbo.NOTIFICACION x
+                                   JOIN dbo.OLA_CONVOCATORIA o ON o.id_ola = x.id_ola
+                                   JOIN dbo.RESPUESTA_CONVOCATORIA rc ON rc.id_notificacion = x.id_notificacion
+                                   WHERE x.id_donante = d.id_donante AND rc.respuesta = 'voy')) AS unidades_convocatorias,
        CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.ALERTA_ANTIFRAUDE a
                               WHERE a.id_donante = d.id_donante AND a.estado_revision = N'Pendiente') THEN 1 ELSE 0 END AS BIT) AS alerta_pendiente,
        CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.fn_donantes_elegibles(?) e
@@ -107,13 +116,68 @@ def mi_perfil(usuario: Usuario = Depends(requiere("donante")), db: Database = De
         sexo=p["sexo"],
         tipo_sangre=p["tipo_sangre"],
         distrito=p["distrito"],
+        telefono_whatsapp=p.get("telefono_whatsapp"),
         estado_verificacion=p["estado_verificacion"],
         consentimiento_vigente=bool(p["consentimiento_vigente"]),
+        consentimiento_fecha=p.get("consentimiento_fecha"),
         ultima_donacion=ultima,
         proxima_fecha_posible=proxima,
         puede_donar_hoy=bool(p["elegible"]),
         motivo_si_no_puede=_motivo(p, hoy, proxima),
         historial=historial,
+        unidades_convocatorias=int(p.get("unidades_convocatorias") or 0),
+    )
+
+
+_SQL_CONVOCATORIA = """
+SELECT TOP (1) n.id_necesidad, n.tipo_sangre, i.id_institucion, i.razon_social AS institucion,
+       o.numero_ola, o.radio_km,
+       CAST(d.ubicacion.STDistance(i.ubicacion) / 1000.0 AS DECIMAL(5, 1)) AS distancia_km,
+       x.fecha_envio, rc.respuesta
+FROM dbo.NOTIFICACION x
+JOIN dbo.OLA_CONVOCATORIA o ON o.id_ola = x.id_ola
+JOIN dbo.NECESIDAD n        ON n.id_necesidad = o.id_necesidad
+JOIN dbo.INSTITUCION i      ON i.id_institucion = n.id_institucion
+JOIN dbo.DONANTE d          ON d.id_donante = x.id_donante
+LEFT JOIN dbo.RESPUESTA_CONVOCATORIA rc ON rc.id_notificacion = x.id_notificacion
+WHERE x.id_donante = ? AND n.estado = N'Activa'
+ORDER BY x.fecha_envio DESC;
+"""
+
+
+@router.get("/me/convocatoria", response_model=ConvocatoriaDonanteOut | None,
+            summary="El último aviso que recibí de una necesidad activa (o null)")
+def mi_convocatoria(usuario: Usuario = Depends(requiere("donante")),
+                    db: Database = Depends(get_db)) -> ConvocatoriaDonanteOut | None:
+    fila = db.uno(_SQL_CONVOCATORIA, [usuario.id])
+    return ConvocatoriaDonanteOut(**fila) if fila else None
+
+
+@router.put("/me/convocatorias/{id_necesidad}/respuesta", status_code=status.HTTP_204_NO_CONTENT,
+            summary="Responder a un aviso: «voy», «no» o null para borrar la respuesta")
+def responder(id_necesidad: int, datos: RespuestaIn, usuario: Usuario = Depends(requiere("donante")),
+              db: Database = Depends(get_db)) -> None:
+    aviso = db.uno(
+        "SELECT TOP (1) x.id_notificacion, n.estado FROM dbo.NOTIFICACION x "
+        "JOIN dbo.OLA_CONVOCATORIA o ON o.id_ola = x.id_ola "
+        "JOIN dbo.NECESIDAD n ON n.id_necesidad = o.id_necesidad "
+        "WHERE o.id_necesidad = ? AND x.id_donante = ?",
+        [id_necesidad, usuario.id],
+    )
+    if not aviso:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No recibiste un aviso de esa necesidad.")
+    if aviso["estado"] != "Activa":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esa convocatoria ya se cerró.")
+    if datos.respuesta is None:
+        db.ejecutar("DELETE FROM dbo.RESPUESTA_CONVOCATORIA WHERE id_notificacion = ?", [aviso["id_notificacion"]])
+        return
+    db.ejecutar(
+        "MERGE dbo.RESPUESTA_CONVOCATORIA AS t USING (SELECT ? AS id_notificacion, ? AS respuesta) AS s "
+        "ON t.id_notificacion = s.id_notificacion "
+        "WHEN MATCHED THEN UPDATE SET respuesta = s.respuesta, fecha_hora = SYSDATETIME() "
+        "WHEN NOT MATCHED THEN INSERT (id_notificacion, respuesta, fecha_hora) "
+        "  VALUES (s.id_notificacion, s.respuesta, SYSDATETIME());",
+        [aviso["id_notificacion"], datos.respuesta],
     )
 
 

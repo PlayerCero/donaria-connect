@@ -84,13 +84,34 @@ class PerfilDonanteOut(BaseModel):
     sexo: str
     tipo_sangre: str
     distrito: str
+    telefono_whatsapp: str | None = None
     estado_verificacion: str
     consentimiento_vigente: bool
+    consentimiento_fecha: datetime | None = None
     ultima_donacion: date | None
     proxima_fecha_posible: date | None
     puede_donar_hoy: bool
     motivo_si_no_puede: str | None
     historial: list[DonacionOut]
+    unidades_convocatorias: int = Field(
+        0, description="Unidades que reunieron las convocatorias a las que respondió «voy» (cifra agregada)")
+
+
+class ConvocatoriaDonanteOut(BaseModel):
+    """El último aviso que recibió el donante, de una necesidad todavía activa."""
+    id_necesidad: int
+    tipo_sangre: str
+    id_institucion: int
+    institucion: str
+    numero_ola: int
+    radio_km: int
+    distancia_km: float
+    fecha_envio: datetime
+    respuesta: Literal["voy", "no"] | None
+
+
+class RespuestaIn(BaseModel):
+    respuesta: Literal["voy", "no"] | None = Field(..., description="null = borrar mi respuesta")
 
 
 # --- Necesidades y olas ---
@@ -100,6 +121,14 @@ class NecesidadIn(BaseModel):
     unidades_meta: int = Field(..., gt=0, le=100)
 
 
+class OlaResumenOut(BaseModel):
+    numero_ola: int
+    radio_km: int
+    donantes_notificados: int
+    respondieron: int = Field(0, description="Cuántos respondieron «voy» (sin decir quiénes)")
+    fecha_envio: datetime
+
+
 class NecesidadOut(BaseModel):
     id_necesidad: int
     tipo_sangre: str
@@ -107,6 +136,14 @@ class NecesidadOut(BaseModel):
     unidades_meta: int
     estado: str
     fecha_creacion: datetime
+    unidades_obtenidas: int = 0
+    olas: list[OlaResumenOut] = []
+
+
+class EstimadoOut(BaseModel):
+    tipo_sangre: str | None
+    radio_km: int
+    donantes_elegibles: int
 
 
 class OlaIn(BaseModel):
@@ -139,6 +176,25 @@ class ReporteOut(BaseModel):
     donantes_notificados: int
     unidades_obtenidas: int
     pct_cumplimiento: float
+
+
+class InstitucionOut(BaseModel):
+    id_institucion: int
+    razon_social: str
+    autorizacion_sanitaria: str
+    estado_afiliacion: str
+    latitud: float
+    longitud: float
+
+
+class RevisionIn(BaseModel):
+    decision: Literal["falsa", "pausar", "escalar"] = "falsa"
+    nota: str = Field("", max_length=300)
+
+
+class AlertasResumenOut(BaseModel):
+    pendientes: int
+    revisadas: int
 
 
 class AlertaOut(BaseModel):

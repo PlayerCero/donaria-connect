@@ -215,3 +215,83 @@ def test_traduce_throw_de_sql_server():
              "Esa ola ya fue lanzada para esta necesidad. (50002) (SQLExecDirectW)')")
     e = _traducir(Exception(texto))
     assert isinstance(e, ErrorDeNegocio) and e.codigo == 50002 and e.mensaje.startswith("Esa ola")
+
+
+# --- fase 3: lo que necesitan las pantallas de la web ---
+def test_health_trae_ahora_con_fecha_de_referencia(client):
+    cuerpo = client.get("/health").json()
+    assert cuerpo["ahora"].startswith(cuerpo["fecha_referencia"])
+
+
+def test_necesidades_incluyen_olas_y_unidades(client, db):
+    db.responder(r"LEFT JOIN dbo.RESULTADO_AGREGADO", [
+        {"id_necesidad": 31, "tipo_sangre": "O-", "zona": "Miraflores", "unidades_meta": 6, "estado": "Activa",
+         "fecha_creacion": datetime(2026, 11, 9, 8, 10), "unidades_obtenidas": 2},
+        {"id_necesidad": 27, "tipo_sangre": "AB+", "zona": "Miraflores", "unidades_meta": 2, "estado": "Cerrada",
+         "fecha_creacion": datetime(2026, 10, 3, 13, 20), "unidades_obtenidas": 2}])
+    db.responder(r"FROM dbo.OLA_CONVOCATORIA o", [
+        {"id_necesidad": 31, "numero_ola": 1, "radio_km": 3, "donantes_notificados": 5, "respondieron": 1,
+         "fecha_envio": datetime(2026, 11, 9, 8, 12)},
+        {"id_necesidad": 31, "numero_ola": 2, "radio_km": 6, "donantes_notificados": 9, "respondieron": 0,
+         "fecha_envio": datetime(2026, 11, 9, 10, 15)}])
+    r = client.get("/necesidades", headers=token("clinica", 1, 1))
+    assert r.status_code == 200, r.text
+    n31, n27 = r.json()
+    assert [o["radio_km"] for o in n31["olas"]] == [3, 6] and n31["unidades_obtenidas"] == 2
+    assert n27["olas"] == []
+    # Las consultas filtran por la institución del token y no tocan datos de donantes
+    for sql, params in db.llamadas:
+        assert params == [1] and "nombres" not in sql and "dni" not in sql
+
+
+def test_estimado_filtra_por_tipo_y_radio(client, db):
+    db.responder(r"fn_donantes_elegibles", [{"n": 17}])
+    r = client.get("/necesidades/estimado?radio_km=6&tipo_sangre=O-", headers=token("clinica", 1, 1))
+    assert r.json() == {"tipo_sangre": "O-", "radio_km": 6, "donantes_elegibles": 17}
+    sql, params = db.llamadas[-1]
+    assert "e.tipo_sangre = ?" in sql and params[1:] == [1, 6, "O-"]
+
+
+def test_convocatoria_del_donante_vacia_devuelve_null(client, db):
+    db.responder(r"WHERE x.id_donante = \? AND n.estado", [])
+    r = client.get("/donantes/me/convocatoria", headers=token("donante", 48))
+    assert r.status_code == 200 and r.json() is None
+
+
+def test_responder_aviso_guarda_respuesta(client, db):
+    db.responder(r"SELECT TOP \(1\) x.id_notificacion", [{"id_notificacion": 900, "estado": "Activa"}])
+    r = client.put("/donantes/me/convocatorias/31/respuesta", json={"respuesta": "voy"}, headers=token("donante", 48))
+    assert r.status_code == 204
+    sql, params = db.llamadas[-1]
+    assert "MERGE dbo.RESPUESTA_CONVOCATORIA" in sql and params == [900, "voy"]
+
+
+def test_responder_aviso_ajeno_404_y_cerrado_409(client, db):
+    db.responder(r"SELECT TOP \(1\) x.id_notificacion", [])
+    h = token("donante", 48)
+    assert client.put("/donantes/me/convocatorias/31/respuesta", json={"respuesta": "no"}, headers=h).status_code == 404
+    db.reglas.clear()
+    db.responder(r"SELECT TOP \(1\) x.id_notificacion", [{"id_notificacion": 900, "estado": "Cerrada"}])
+    assert client.put("/donantes/me/convocatorias/31/respuesta", json={"respuesta": "no"}, headers=h).status_code == 409
+
+
+def test_token_demo_donante_0_elige_un_notificado(client, db):
+    db.responder(r"ORDER BY x.fecha_envio DESC, x.id_donante", [{"id_donante": 233}])
+    r = client.post("/auth/token-demo", json={"rol": "donante", "id": 0})
+    assert r.status_code == 200 and r.json()["id"] == 233
+
+
+def test_revisar_alerta_guarda_decision_en_auditoria(client, db):
+    r = client.patch("/alertas/7/revisar", json={"decision": "escalar", "nota": "Pedí el registro"},
+                     headers=token("equipo"))
+    assert r.status_code == 204
+    sql, params = db.llamadas[-1]
+    assert "AUDITORIA" in sql and "institución" in params[1] and "Pedí el registro" in params[1]
+
+
+def test_instituciones_para_el_equipo(client, db):
+    db.responder(r"FROM dbo.INSTITUCION", [{"id_institucion": 1, "razon_social": "Clínica Delgado Auna",
+                                            "autorizacion_sanitaria": "Vigente", "estado_afiliacion": "Piloto",
+                                            "latitud": -12.1197, "longitud": -77.0386}])
+    r = client.get("/instituciones", headers=token("equipo"))
+    assert r.status_code == 200 and r.json()[0]["estado_afiliacion"] == "Piloto"

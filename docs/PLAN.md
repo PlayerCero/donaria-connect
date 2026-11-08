@@ -116,6 +116,7 @@ README con el diagrama de arquitectura, cómo correrlo, decisiones (por qué dos
 
 - ✅ Fase 0 (07/11/2026): repositorio y estructura.
 - ✅ Fase 1 (08/11/2026): Azure SQL creada con la oferta gratuita (servidor sin servidor, Brazil South, 32 GB, facturación extra desactivada, autenticación solo Microsoft Entra). `db/01_azure.sql` cargado; mismas cifras que en local (500 donantes, 354 elegibles al 09/11/2026).
+- ✅ Fase 3 (08/11/2026): la web usa la API. `web/js/api.js` carga los datos de la base y guarda registro, respuestas, necesidades, olas, unidades y revisión de alertas; si la API no responde, usa `data.js`. Nueva tabla `RESPUESTA_CONVOCATORIA` (`db/03_fase3_respuestas.sql`, aplicada por `scripts/migrar.py`) para contar quién respondió sin mostrar nombres. 6 rutas nuevas, 28 pruebas. `scripts/abrir_demo.ps1` levanta API + web en Windows. Probado de punta a punta con Playwright contra la API con base simulada; falta la verificación de Eric contra Azure.
 - ✅ Fase 2 (08/11/2026): API en FastAPI (`api/`), 13 rutas, 19 pruebas con base simulada, `scripts/smoke_test.py` contra Azure SQL: 14/14 correctos (08/11/2026). Conexión a Azure con token de Microsoft Entra (azure-identity). Login de demostración por rol (sin contraseñas).
 - ⏭️ Siguiente: fase 3 (conectar la web a la API).
 

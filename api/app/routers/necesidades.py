@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..config import settings
 from ..db import Database, ErrorDeNegocio, get_db
-from ..schemas import NecesidadIn, NecesidadOut, OlaIn, OlaOut, ResultadoIn
+from ..schemas import EstimadoOut, NecesidadIn, NecesidadOut, OlaIn, OlaOut, OlaResumenOut, ResultadoIn, TipoSangre
 from ..security import Usuario, requiere
 
 router = APIRouter(prefix="/necesidades", tags=["necesidades y olas (clínica)"])
@@ -31,13 +31,50 @@ def _necesidad_propia(db: Database, id_necesidad: int, usuario: Usuario) -> dict
     return fila
 
 
-@router.get("", response_model=list[NecesidadOut], summary="Necesidades de mi institución")
+_SQL_LISTA = """
+SELECT n.id_necesidad, n.tipo_sangre, n.zona, n.unidades_meta, n.estado, n.fecha_creacion,
+       ISNULL(r.unidades_obtenidas, 0) AS unidades_obtenidas
+FROM dbo.NECESIDAD n
+LEFT JOIN dbo.RESULTADO_AGREGADO r ON r.id_necesidad = n.id_necesidad
+WHERE n.id_institucion = ?
+ORDER BY n.id_necesidad DESC;
+"""
+
+# Respondieron = cuántos dijeron «voy». Solo el conteo: la clínica nunca ve quién.
+_SQL_OLAS = """
+SELECT o.id_necesidad, o.numero_ola, o.radio_km, o.donantes_notificados, o.fecha_envio,
+       (SELECT COUNT(*) FROM dbo.NOTIFICACION x
+        JOIN dbo.RESPUESTA_CONVOCATORIA rc ON rc.id_notificacion = x.id_notificacion
+        WHERE x.id_ola = o.id_ola AND rc.respuesta = 'voy') AS respondieron
+FROM dbo.OLA_CONVOCATORIA o
+JOIN dbo.NECESIDAD n ON n.id_necesidad = o.id_necesidad
+WHERE n.id_institucion = ?
+ORDER BY o.id_necesidad, o.numero_ola;
+"""
+
+
+@router.get("", response_model=list[NecesidadOut], summary="Necesidades de mi institución, con sus olas y unidades")
 def listar(usuario: Usuario = Depends(requiere("clinica")), db: Database = Depends(get_db)) -> list[NecesidadOut]:
-    filas = db.consultar(
-        f"SELECT {_COLUMNAS} FROM dbo.NECESIDAD WHERE id_institucion = ? ORDER BY id_necesidad DESC",
-        [usuario.id_institucion],
-    )
-    return [NecesidadOut(**f) for f in filas]
+    necesidades = db.consultar(_SQL_LISTA, [usuario.id_institucion])
+    olas: dict[int, list[OlaResumenOut]] = {}
+    for o in db.consultar(_SQL_OLAS, [usuario.id_institucion]):
+        olas.setdefault(int(o["id_necesidad"]), []).append(OlaResumenOut(**o))
+    return [NecesidadOut(**n, olas=olas.get(int(n["id_necesidad"]), [])) for n in necesidades]
+
+
+@router.get("/estimado", response_model=EstimadoOut,
+            summary="Cuántos donantes elegibles hay a cierta distancia de mi clínica (solo la cifra)")
+def estimado(radio_km: int = Query(3, ge=1, le=10), tipo_sangre: TipoSangre | None = None,
+             usuario: Usuario = Depends(requiere("clinica")), db: Database = Depends(get_db)) -> EstimadoOut:
+    sql = ("SELECT COUNT(*) AS n FROM dbo.fn_donantes_elegibles(?) e "
+           "CROSS JOIN (SELECT ubicacion FROM dbo.INSTITUCION WHERE id_institucion = ?) i "
+           "WHERE e.ubicacion.STDistance(i.ubicacion) <= ? * 1000.0")
+    params: list = [settings.hoy(), usuario.id_institucion, radio_km]
+    if tipo_sangre:
+        sql += " AND e.tipo_sangre = ?"
+        params.append(tipo_sangre)
+    fila = db.uno(sql, params)
+    return EstimadoOut(tipo_sangre=tipo_sangre, radio_km=radio_km, donantes_elegibles=int(fila["n"]) if fila else 0)
 
 
 @router.post("", response_model=NecesidadOut, status_code=status.HTTP_201_CREATED,

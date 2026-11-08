@@ -7,6 +7,7 @@ elegibilidad y segmentación) y **4.5.1** (reglas antifraude). Responsable: Eric
 |---|---|
 | `01_crear_y_cargar.sql` | Crea la base `DonariaConnect`, las 11 tablas, 500 donantes ficticios, la lógica (elegibilidad, olas, antifraude), las vistas y los permisos. Se puede volver a correr: borra y recrea todo. |
 | `02_consultas_exposicion.sql` | Las 10 consultas para mostrar el lunes, incluida una ola lanzada en vivo. |
+| `03_fase3_respuestas.sql` | Fase 3: tabla `RESPUESTA_CONVOCATORIA` (lo que el donante contesta al aviso) y respuestas ficticias. Se corre después de `01`; también lo aplica `scripts/migrar.py`. |
 
 Funciona en SQL Server 2016 o superior (Express sirve). Escenario fechado al **lunes 09/11/2026**.
 

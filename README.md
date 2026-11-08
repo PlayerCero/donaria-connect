@@ -38,10 +38,20 @@ SQL Server opera la app (transacciones, claves únicas, respuestas en milisegund
 | Carpeta | Contenido | Estado |
 |---|---|---|
 | `db/` | Script de creación + 500 donantes ficticios, olas, antifraude, vistas y permisos; consultas de demo. `01_azure.sql` es la versión para Azure SQL | ✅ local y en Azure SQL |
-| `web/` | Prototipo navegable (sin dependencias). Abrir `web/index.html` | ✅ con datos de ejemplo |
-| `api/` | API en FastAPI: registro, perfil y elegibilidad, necesidades, olas, reportes y antifraude. Ver `api/README.md` | ✅ fase 2 |
+| `web/` | Web del donante, panel de la clínica y del equipo (sin dependencias). Si la API está corriendo usa la base; si no, datos de ejemplo. Ver `web/README.md` | ✅ fase 3 |
+| `api/` | API en FastAPI: registro, perfil y elegibilidad, avisos y respuestas, necesidades, olas, reportes y antifraude. Ver `api/README.md` | ✅ fases 2 y 3 |
+| `scripts/` | `abrir_demo.ps1` (levanta todo en Windows), `migrar.py` (cambios de la base) y `smoke_test.py` (prueba de punta a punta) | ✅ |
 | `pipeline/` | Extracción a BigQuery | 🔲 fase 7 |
 | `docs/` | Plan por fases y diagrama de la base | ✅ |
+
+## Abrir la demo completa (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\abrir_demo.ps1
+```
+
+Actualiza el código, instala dependencias, aplica `db/03_fase3_respuestas.sql`, levanta la API (puerto 8000) y la
+web (puerto 5500) y abre <http://127.0.0.1:5500>. La primera carga puede tardar hasta un minuto (Azure despierta la base).
 
 ## Probar la base de datos
 

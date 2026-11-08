@@ -1,4 +1,4 @@
-# API de Donaria Connect (FastAPI) — fase 2
+# API de Donaria Connect (FastAPI) — fases 2 y 3
 
 API en Python que conecta la web con la base de datos. La lógica pesada vive en SQL Server
 (`fn_donantes_elegibles`, `sp_lanzar_ola`, reglas antifraude); la API valida, autoriza y llama a la base.
@@ -11,11 +11,15 @@ API en Python que conecta la web con la base de datos. La lógica pesada vive en
 | `POST /donantes` | público | Registro: guarda hash del DNI, ubica al donante en el centro de su distrito y registra el consentimiento. DNI repetido → 409 y alerta R4 |
 | `GET /donantes/me` | donante | Perfil, historial, próxima fecha posible y si puede donar hoy (con el motivo si no) |
 | `POST` / `DELETE /donantes/me/consentimiento` | donante | Aceptar / revocar |
-| `GET` / `POST /necesidades` | clínica | Listar / declarar una necesidad (sin datos de pacientes) |
+| `GET /donantes/me/convocatoria` | donante | Último aviso de una necesidad activa (o `null`), con distancia y su respuesta |
+| `PUT /donantes/me/convocatorias/{id}/respuesta` | donante | Responder «voy» / «no» (o `null` para borrar). La clínica solo ve el conteo |
+| `GET` / `POST /necesidades` | clínica | Listar (con olas, respondieron y unidades) / declarar una necesidad (sin datos de pacientes) |
+| `GET /necesidades/estimado` | clínica | Cuántos donantes elegibles hay a `radio_km` de la clínica (opcional `tipo_sangre`) |
 | `POST /necesidades/{id}/olas` | clínica | Lanza la siguiente ola (3 → 6 → 10 km) con `sp_lanzar_ola` |
 | `POST /necesidades/{id}/resultado` | clínica | Unidades obtenidas (solo la cifra) y cierre |
 | `GET /reportes` | clínica, equipo | `vw_reporte_institucion`: solo cifras |
-| `GET /alertas` · `PATCH /alertas/{id}/revisar` · `POST /alertas/ejecutar-reglas` | equipo | Antifraude |
+| `GET /alertas` · `GET /alertas/resumen` · `PATCH /alertas/{id}/revisar` · `POST /alertas/ejecutar-reglas` | equipo | Antifraude. La revisión acepta `decision` y `nota`, que quedan en auditoría |
+| `GET /instituciones` | todos con token | Bancos de sangre de la red (sin datos de donantes) |
 | `GET /health` · `GET /health/db` | público | Estado de la API y de la conexión a la base |
 
 > **Login de demostración:** el token se pide indicando rol e id, sin contraseña. Sirve para la demo con
@@ -38,6 +42,9 @@ API en Python que conecta la web con la base de datos. La lógica pesada vive en
    .venv\Scripts\activate
    pip install -r requirements-dev.txt
    ```
+
+Después de cargar `db/01_*.sql`, aplica los cambios de la fase 3 (tabla de respuestas):
+`python ..\scripts\migrar.py` (con el entorno activo). `scripts\abrir_demo.ps1` hace todo esto solo.
 
 **Cada vez:**
 
