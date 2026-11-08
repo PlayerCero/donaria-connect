@@ -26,6 +26,7 @@ def lotes(texto: str) -> list[str]:
 
 
 def main() -> int:
+    print("Conectando con la base (si estaba en pausa, Azure tarda hasta 2 minutos en despertarla)...")
     db = Database()
     for nombre in SCRIPTS:
         texto = (RAIZ / "db" / nombre).read_text(encoding="utf-8-sig")

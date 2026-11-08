@@ -22,6 +22,8 @@ class ErrorDeNegocio(Exception):
         self.mensaje = mensaje
 
 
+# Errores pasajeros de Azure SQL: base despertando (40613), servicio ocupado (40501, 40197, 49918-49920).
+_ES_TRANSITORIO = re.compile(r"\((40613|40501|40197|49918|49919|49920)\)")
 _THROW = re.compile(r"\[SQL Server\](.*?)\s*\((5000\d)\)")
 
 
@@ -98,11 +100,21 @@ class Database:
     def _conexion(self, autocommit: bool = True) -> Iterator[Any]:
         import pyodbc  # import diferido: las pruebas no necesitan el driver ODBC
 
+        import time
+
         extra = {}
         if self._usa_entra:
             extra["attrs_before"] = {_SQL_COPT_SS_ACCESS_TOKEN: _token_entra(self._credencial)}
-        # timeout = segundos de espera al conectar; la base sin servidor de Azure tarda en "despertar".
-        conn = pyodbc.connect(self._conexion_str, autocommit=autocommit, timeout=90, **extra)
+        # La base sin servidor de Azure se pausa sola. Mientras despierta responde 40613
+        # ("not currently available"): se reintenta hasta ~2 minutos en vez de fallar.
+        for intento in range(12):
+            try:
+                conn = pyodbc.connect(self._conexion_str, autocommit=autocommit, timeout=90, **extra)
+                break
+            except pyodbc.Error as e:
+                if intento == 11 or not _ES_TRANSITORIO.search(str(e)):
+                    raise
+                time.sleep(10)
         try:
             yield conn
         finally:

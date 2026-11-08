@@ -295,3 +295,9 @@ def test_instituciones_para_el_equipo(client, db):
                                             "latitud": -12.1197, "longitud": -77.0386}])
     r = client.get("/instituciones", headers=token("equipo"))
     assert r.status_code == 200 and r.json()[0]["estado_afiliacion"] == "Piloto"
+
+
+def test_reconoce_base_despertando_como_error_pasajero():
+    from app.db import _ES_TRANSITORIO
+    assert _ES_TRANSITORIO.search("Database 'DonariaConnect' ... is not currently available. (40613) (SQLDriverConnect)")
+    assert not _ES_TRANSITORIO.search("Login failed for user (18456)")
