@@ -55,7 +55,7 @@ class Settings:
     whatsapp_numeros_prueba: list[str] = field(default_factory=lambda: _lista(os.getenv("WHATSAPP_NUMEROS_PRUEBA", "")))
     whatsapp_plantilla: str = field(default_factory=lambda: os.getenv("WHATSAPP_PLANTILLA", "convocatoria_donacion"))
     whatsapp_idioma: str = field(default_factory=lambda: os.getenv("WHATSAPP_IDIOMA", "es"))
-    whatsapp_version: str = field(default_factory=lambda: os.getenv("WHATSAPP_VERSION", "v23.0"))
+    whatsapp_version: str = field(default_factory=lambda: os.getenv("WHATSAPP_VERSION", "v25.0"))
 
     cors_origins: list[str] = field(default_factory=lambda: _lista(os.getenv("CORS_ORIGINS", "*")))
 
