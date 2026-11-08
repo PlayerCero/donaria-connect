@@ -10,9 +10,11 @@
   const guardar = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
   const leer = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   if (qs.get("api")) guardar("donaria.api", qs.get("api"));
-  const BASE = (qs.get("api") || leer("donaria.api") || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|)$/.test(location.hostname);
+  const PORDEFECTO = LOCAL ? "http://127.0.0.1:8000" : (window.DONARIA_API_PUBLICA || "http://127.0.0.1:8000");
+  const BASE = (qs.get("api") || leer("donaria.api") || PORDEFECTO).replace(/\/+$/, "");
 
-  const API = { base: BASE, conectado: false, error: null, tokens: {}, ahora: null };
+  const API = { base: BASE, conectado: false, error: null, tokens: {}, ahora: null, publica: !LOCAL };
   window.API = API;
 
   /* ---------- HTTP ---------- */

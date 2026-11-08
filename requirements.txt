@@ -1,0 +1,2 @@
+# Azure App Service instala desde aquí; las dependencias reales están en api/requirements.txt
+-r api/requirements.txt

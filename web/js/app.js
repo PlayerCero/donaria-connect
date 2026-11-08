@@ -96,7 +96,8 @@
   const vRegistro = () => {
     const r = S.reg, e = regErrors(), ok = Object.keys(e).length === 0;
     return phone({ title: "Crea tu registro", sub: "Te avisaremos solo cuando tu tipo de sangre haga falta cerca de ti.", step: 1, back: ["inicio", "Mapa"],
-      body: `<form class="grid-form" style="display:grid;gap:18px" novalidate data-form="reg">
+      body: `${window.API && window.API.publica ? `<p class="note note-signal">${ic("alert")}<span><b>Demo pública con datos de prueba.</b> Usa un nombre, DNI y celular inventados; no escribas tus datos reales.</span></p>` : ""}
+      <form class="grid-form" style="display:grid;gap:18px" novalidate data-form="reg">
         <div class="field"><label for="f-nombres">Nombres y apellidos</label>
           <input class="input" id="f-nombres" name="nombres" autocomplete="name" value="${esc(r.nombres)}" placeholder="Lucía Paredes Rojas" ${S.reg.touched.nombres && e.nombres ? 'aria-invalid="true" aria-describedby="e-nombres"' : ""}>${fieldErr("nombres", e)}</div>
         <div class="field"><label for="f-dni">DNI</label>
