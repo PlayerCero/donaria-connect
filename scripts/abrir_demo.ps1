@@ -99,6 +99,11 @@ Write-Host "Si se abre el inicio de sesion de Microsoft, entra con tu cuenta de 
 & $py (Join-Path $destino "scripts\migrar.py")
 if ($LASTEXITCODE -ne 0) { Falta "aplicar los cambios de la base" "Revisa el mensaje de arriba (firewall de Azure o inicio de sesion) y vuelve a abrir este archivo." }
 
+if ((Get-Content $envFile) -match '^WHATSAPP_TOKEN=.+') {
+    Write-Host "`n== WhatsApp: estado del numero de prueba ==" -ForegroundColor Cyan
+    & $py (Join-Path $destino "scripts\whatsapp_activar.py")
+}
+
 Write-Host "`n== Levantando la API y la web ==" -ForegroundColor Cyan
 Liberar 8000; Liberar 5500
 Start-Sleep -Seconds 1
