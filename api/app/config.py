@@ -43,6 +43,12 @@ class Settings:
     # Los datos ficticios están pensados para 2026-11-09.
     fecha_referencia: str = field(default_factory=lambda: os.getenv("FECHA_REFERENCIA", ""))
 
+    # Didit (verificación de identidad). Vacío = la verificación queda simulada en la web.
+    didit_api_key: str = field(default_factory=lambda: os.getenv("DIDIT_API_KEY", ""))
+    didit_workflow_id: str = field(default_factory=lambda: os.getenv("DIDIT_WORKFLOW_ID", ""))
+    didit_webhook_secret: str = field(default_factory=lambda: os.getenv("DIDIT_WEBHOOK_SECRET", ""))
+    didit_base_url: str = field(default_factory=lambda: os.getenv("DIDIT_BASE_URL", "https://verification.didit.me"))
+
     cors_origins: list[str] = field(default_factory=lambda: _lista(os.getenv("CORS_ORIGINS", "*")))
 
     def hoy(self) -> date:

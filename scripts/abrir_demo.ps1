@@ -1,4 +1,4 @@
-# Donaria Connect - abre la demo completa en Windows: API (fase 2) + web conectada a la base (fase 3).
+# Donaria Connect - abre la demo completa en Windows: API + web conectada a la base + verificacion con Didit (fases 2-4).
 # Se puede correr varias veces: actualiza el codigo, aplica los cambios de la base y vuelve a levantar todo.
 # Uso: doble clic en "ABRIR DEMO (doble clic).bat", o en PowerShell:  powershell -ExecutionPolicy Bypass -File abrir_demo.ps1
 $ErrorActionPreference = "Stop"
@@ -47,6 +47,25 @@ if (-not (Test-Path $envFile)) {
     Write-Host "[ok] Archivo .env creado (con una clave propia para los tokens)" -ForegroundColor Green
 }
 
+# Didit (fase 4): si faltan las claves en .env, se piden una sola vez. Enter para seguir sin Didit (simulado).
+function Poner-Variable($nombre, $valor) {
+    $lineas = @(Get-Content $envFile)
+    if ($lineas -match "^$nombre=") { $lineas = $lineas -replace "^$nombre=.*", "$nombre=$valor" } else { $lineas += "$nombre=$valor" }
+    Set-Content $envFile $lineas -Encoding UTF8
+}
+if (-not ((Get-Content $envFile) -match '^DIDIT_API_KEY=.+')) {
+    Write-Host "`n== Didit (verificacion de identidad) ==" -ForegroundColor Cyan
+    Write-Host "Consola de Didit -> tu aplicacion de sandbox -> API Keys (copia la clave) y Workflows (copia el ID)." -ForegroundColor Yellow
+    Write-Host "Se guardan solo en $envFile (nunca se suben a GitHub). Enter vacio = seguir sin Didit." -ForegroundColor Yellow
+    $clave = Read-Host "Pega la API key de Didit"
+    if ($clave) {
+        $flujo = Read-Host "Pega el Workflow ID de Didit"
+        Poner-Variable "DIDIT_API_KEY" $clave.Trim()
+        Poner-Variable "DIDIT_WORKFLOW_ID" $flujo.Trim()
+        Write-Host "[ok] Didit configurado" -ForegroundColor Green
+    }
+}
+
 Set-Location (Join-Path $destino "api")
 if (-not (Test-Path ".venv")) { python -m venv .venv }
 $py = Join-Path (Get-Location) ".venv\Scripts\python.exe"
@@ -56,7 +75,7 @@ Write-Host "[ok] Dependencias instaladas" -ForegroundColor Green
 Write-Host "`n== Pruebas automaticas (sin base) ==" -ForegroundColor Cyan
 & $py -m pytest -q
 
-Write-Host "`n== Cambios de la base (fase 3: respuestas de los donantes) ==" -ForegroundColor Cyan
+Write-Host "`n== Cambios de la base (fase 3 respuestas, fase 4 verificacion) ==" -ForegroundColor Cyan
 Write-Host "Si se abre el inicio de sesion de Microsoft, entra con tu cuenta de la UDEP." -ForegroundColor Yellow
 & $py (Join-Path $destino "scripts\migrar.py")
 if ($LASTEXITCODE -ne 0) { Falta "aplicar los cambios de la base" "Revisa el mensaje de arriba (firewall de Azure o inicio de sesion) y vuelve a abrir este archivo." }

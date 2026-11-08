@@ -117,19 +117,43 @@
       </form>` });
   };
   const VSTEPS = ["Foto de tu DNI", "Selfie con prueba de vida", "Comparación con el DNI"];
+  // Verificación real con Didit (API conectada y Didit configurado): QR para el celular y consulta cada 4 s.
+  const REAL = () => ON() && !!window.API.didit;
+  const ESTADO_DIDIT = { "Not Started": "Esperando que abras el enlace", "In Progress": "Verificación en curso en tu celular", "Awaiting User": "Didit espera un dato tuyo",
+    "Resubmitted": "Revisando lo que reenviaste", "In Review": "En revisión manual de Didit", Approved: "Aprobada", Declined: "Rechazada", Expired: "El enlace venció", Abandoned: "Se abandonó la verificación" };
+  const vVerificacionReal = () => {
+    const d = DB.donante, x = S.didit || {}, ok = d.estado_verificacion === "verificado";
+    const cerrada = ["Expired", "Abandoned", "Kyc Expired"].includes(x.estado_didit);
+    const body = ok ? `<div class="camera" aria-hidden="true"><div class="oval ok"></div><p class="cam-msg">Identidad verificada</p></div>
+        <p class="note note-ok">${ic("check")}<span><b>Didit confirmó tu identidad.</b> Ya puedes recibir convocatorias cuando tu tipo de sangre haga falta cerca.</span></p>
+        <button class="btn btn-primary btn-block" data-act="nav" data-to="d-hoy">Ir a Hoy</button>`
+      : d.estado_verificacion === "rechazado" ? `<p class="note note-signal">${ic("alert")}<span>Didit no pudo confirmar tu identidad. Revisa que la foto del DNI se lea bien y vuelve a intentarlo con buena luz.</span></p>
+        <button class="btn btn-primary btn-block" data-act="didit-iniciar" ${S.ocupado ? "disabled" : ""}>Intentar otra vez</button>`
+      : x.url && !cerrada ? `<section class="group" style="padding:18px;display:grid;gap:12px;justify-items:center;text-align:center">
+          <div style="width:190px;height:190px;background:#fff;border-radius:12px;padding:6px" role="img" aria-label="Código QR del enlace de verificación">${x.qr || ""}</div>
+          <p style="font-size:var(--t-sub)"><b>Escanea el código con la cámara de tu celular.</b><br>Didit te pedirá una foto de tu DNI y una selfie.</p>
+          <a class="btn btn-plain btn-block" href="${esc(x.url)}" target="_blank" rel="noopener">Abrir en este dispositivo</a>
+          <p class="cap" aria-live="polite">${ic("clock")} ${esc(ESTADO_DIDIT[x.estado_didit] || x.estado_didit || "Esperando")}. Esta pantalla se actualiza sola.</p></section>`
+      : `<div class="camera" aria-hidden="true"><div class="oval"></div><p class="cam-msg">${cerrada ? "El enlace anterior ya no sirve" : "Necesitarás tu DNI y tu celular"}</p></div>
+        <ul class="group" style="margin:0;padding:0">${VSTEPS.map((t) => `<li class="row">${ic("check")}<span class="grow">${t}</span></li>`).join("")}</ul>
+        <button class="btn btn-primary btn-block" data-act="didit-iniciar" ${S.ocupado ? "disabled" : ""}>${S.ocupado ? "Preparando…" : cerrada ? "Generar un enlace nuevo" : "Iniciar verificación"}</button>`;
+    return phone({ title: "Verifica tu identidad", sub: "Didit compara tu DNI con tu rostro. Así nadie puede registrarse en tu nombre.", step: 3, back: ["d-hoy", "Hoy"],
+      body: body + `<p class="note note-neutral">${ic("info")}<span>Didit procesa tu foto y tu DNI. Donaria Connect solo guarda si la verificación fue aprobada, nunca las imágenes. Entorno de pruebas (sandbox).</span></p>` });
+  };
   const vVerificacion = () => {
+    if (REAL()) return vVerificacionReal();
     const v = S.verif, done = v >= 4, running = v > 0 && !done;
     const msg = ["Toca el botón para empezar", "Coloca tu DNI dentro del recuadro", "Mira a la cámara y parpadea", "Comparando tu rostro con el DNI…", "Identidad verificada"][v];
-    return phone({ title: "Verifica tu identidad", sub: "Didit compara tu DNI con tu rostro. Así nadie puede registrarse en tu nombre.", step: 2, back: ["d-registro", "Datos"],
+    return phone({ title: "Verifica tu identidad", sub: "Didit compara tu DNI con tu rostro. Así nadie puede registrarse en tu nombre.", step: ON() ? 3 : 2, back: ON() ? ["d-hoy", "Hoy"] : ["d-registro", "Datos"],
       body: `<div class="camera" aria-hidden="true"><div class="oval ${done ? "ok" : ""}"></div><p class="cam-msg">${msg}</p></div>
       <ol class="group verif-steps" style="margin:0;padding:0" aria-live="polite">${VSTEPS.map((s, i) => {
         const st = v > i + 1 || done ? "ok" : v === i + 1 ? "run" : "todo";
         return `<li class="row"><span class="grow">${s}</span>${st === "ok" ? `<span class="pill pill-ok">Listo</span>` : st === "run" ? `<span class="pill pill-accent">En curso</span>` : `<span class="pill pill-neutral">Pendiente</span>`}</li>`; }).join("")}</ol>
-      ${done ? `<button class="btn btn-primary btn-block" data-act="nav" data-to="d-consentimiento">Continuar</button>`
+      ${done ? `<button class="btn btn-primary btn-block" data-act="nav" data-to="${ON() ? "d-hoy" : "d-consentimiento"}">Continuar</button>`
         : `<button class="btn btn-primary btn-block" data-act="verif" ${running ? "disabled" : ""}>${running ? "Verificando…" : "Iniciar verificación"}</button>`}
-      <p class="note note-neutral">${ic("info")}<span>En el prototipo la verificación es una simulación. En la plataforma se abre el flujo seguro de Didit y no guardamos tu foto.</span></p>` });
+      <p class="note note-neutral">${ic("info")}<span>${ON() ? "Didit no está configurado en la API, así que aquí la verificación es una simulación y no cambia tu estado." : "En el prototipo la verificación es una simulación. En la plataforma se abre el flujo seguro de Didit y no guardamos tu foto."}</span></p>` });
   };
-  const vConsentimiento = () => phone({ title: "Tus datos, tus reglas", sub: "Lee cómo usamos tu información antes de crear tu registro.", step: 3, back: ["d-verificacion", "Verificación"],
+  const vConsentimiento = () => phone({ title: "Tus datos, tus reglas", sub: "Lee cómo usamos tu información antes de crear tu registro.", step: ON() ? 2 : 3, back: ON() ? ["d-registro", "Datos"] : ["d-verificacion", "Verificación"],
     body: `<div class="legal" tabindex="0" aria-label="Política de privacidad, versión 1.0">
         <h3>Qué guardamos</h3><p>Nombre, DNI cifrado, celular, distrito, tipo de sangre y fechas en que donaste.</p>
         <h3>Para qué</h3><p>Solo para avisarte cuando tu tipo de sangre haga falta cerca de ti. Donar siempre es voluntario y gratuito: nadie puede pagarte ni cobrarte.</p>
@@ -155,7 +179,7 @@
       body: `<section class="donor-card" aria-label="Tu tarjeta de donante">${aboLabel(d.tipo_sangre)}
           <div class="meta"><span class="name">${esc(d.nombres)}</span>
           ${estadoDonante(d, desde)}
-          <span class="cap">${d.fecha_ultima_donacion ? `Última donación: ${fecha(d.fecha_ultima_donacion)}` : "Aún no tienes donaciones registradas"}<br>${d.estado_verificacion === "verificado" ? "Identidad verificada con Didit" : "Identidad por verificar con Didit"}</span></div></section>
+          <span class="cap">${d.fecha_ultima_donacion ? `Última donación: ${fecha(d.fecha_ultima_donacion)}` : "Aún no tienes donaciones registradas"}<br>${d.estado_verificacion === "verificado" ? "Identidad verificada con Didit" : ON() ? `<a href="#d-verificacion">Verificar mi identidad con Didit</a>` : "Identidad por verificar con Didit"}</span></div></section>
         <section style="display:grid;gap:8px"><h2 class="group-title" style="padding:0 4px">Te necesitan cerca</h2>
           ${c ? `<article class="call-card"><div class="top">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${abo(c.tipo_sangre)}<span class="cap">Recibida ${c.recibida} · ${c.distancia_km} km</span>${c.respuesta === "voy" ? `<span class="pill pill-ok">Vas a ir</span>` : ""}</div>
@@ -439,6 +463,22 @@
     if (focusId && h === last) { const el = document.getElementById(focusId); if (el) { el.focus(); try { el.setSelectionRange(sel[0], sel[1]); } catch (e) {} } }
     if (h !== last) window.scrollTo(0, 0);
     last = h;
+    vigilarDidit();
+  }
+
+  // Mientras el QR está en pantalla, pregunta a la API (que pregunta a Didit) cada 4 segundos.
+  let timerDidit = null;
+  function vigilarDidit() {
+    const activo = location.hash === "#d-verificacion" && REAL() && !!(S.didit && S.didit.url) && DB.donante.estado_verificacion === "pendiente";
+    if (activo && !timerDidit) timerDidit = setInterval(async () => {
+      try {
+        const r = await window.API.consultarVerificacion(), antes = S.didit && S.didit.estado_didit;
+        S.didit = { ...S.didit, estado_didit: r.estado_didit, url: r.url ? S.didit.url : null };
+        if (r.estado_verificacion === "verificado") toast("Identidad verificada con Didit");
+        if (antes !== r.estado_didit || r.estado_verificacion !== "pendiente") render();
+      } catch (e) { /* se reintenta en el siguiente ciclo */ }
+    }, 4000);
+    if (!activo && timerDidit) { clearInterval(timerDidit); timerDidit = null; }
   }
 
   /* ======================= EVENTOS ======================= */
@@ -451,7 +491,7 @@
   document.addEventListener("focusout", (e) => { const t = e.target; if (t.closest?.('[data-form="reg"]') && t.name && !S.reg.touched[t.name]) { S.reg.touched[t.name] = true; setTimeout(render, 0); } });
   document.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (e.target.dataset.form === "reg") { Object.keys(S.reg).forEach((k) => (S.reg.touched[k] = true)); if (!Object.keys(regErrors()).length) go("d-verificacion"); else render(); }
+    if (e.target.dataset.form === "reg") { Object.keys(S.reg).forEach((k) => (S.reg.touched[k] = true)); if (!Object.keys(regErrors()).length) go(ON() ? "d-consentimiento" : "d-verificacion"); else render(); }
     if (e.target.dataset.form === "pre") { S.pre.enviado = true; render(); }
   });
   document.addEventListener("keydown", (e) => {
@@ -465,6 +505,7 @@
     const N = (id) => DB.necesidades.find((x) => x.id_necesidad === Number(id));
     switch (a) {
       case "nav": go(el.dataset.to); break;
+      case "didit-iniciar": conApi(async () => { S.didit = await window.API.iniciarVerificacion(); }); break;
       case "reg-sexo": S.reg.sexo = v; S.reg.touched.sexo = true; render(); break;
       case "donante-demo": conApi(async () => { await window.API.usarDonanteDemo(); S.respuesta = DB.convocatoriaDonante?.respuesta || null; toast(`Ahora ves la app como el donante N.° ${DB.donante.id_donante}.`); }); break;
       case "reg-tipo": S.reg.tipo = v; S.reg.noSabe = false; S.reg.touched.tipo = true; render(); break;
@@ -480,7 +521,7 @@
           const res = await window.API.registrar({ dni: r.dni, nombres: r.nombres.trim(), sexo: r.sexo, tipo_sangre: r.tipo, distrito: r.distrito,
             telefono_whatsapp: r.cel.replace(/\s/g, ""), acepta_consentimiento: true });
           S.reg = { nombres: "", dni: "", cel: "", distrito: "", sexo: "", tipo: "", noSabe: false, touched: {} }; S.verif = 0; S.consent = false;
-          S.respuesta = null; go("d-hoy"); toast(`Registro creado (donante N.° ${res.id_donante}). Te avisaremos cuando te necesiten.`);
+          S.respuesta = null; S.didit = null; go("d-verificacion"); toast(`Registro creado (donante N.° ${res.id_donante}). Ahora verifica tu identidad.`);
         });
         break;
       case "resp":

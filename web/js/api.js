@@ -85,7 +85,7 @@
 
   async function cargarTodo() {
     const salud = await pedir("GET", "/health", { espera: 3000 });   // ¿la API está viva? (si no, data.js)
-    API.ahora = salud.ahora;
+    API.ahora = salud.ahora; API.didit = !!salud.didit;
     pantallaCarga();
     // Una sola llamada primero: despierta la base sin servidor de Azure y, si hace falta, abre el
     // inicio de sesión de Microsoft una sola vez. Luego todo va en paralelo.
@@ -153,6 +153,16 @@
   API.guardarUnidades = async (id, unidades, cerrar = false) => {
     await pedir("POST", `/necesidades/${id}/resultado`, { rol: "clinica", cuerpo: { unidades_obtenidas: unidades, cerrar } });
     await refrescarNecesidades();
+  };
+  API.iniciarVerificacion = async () => {
+    const v = await pedir("POST", "/verificacion", { rol: "donante" });
+    // El SVG del QR viene en milímetros: se ajusta al recuadro.
+    return { ...v, qr: (v.qr_svg || "").replace(/width="[^"]*" height="[^"]*"/, 'width="100%" height="100%"') };
+  };
+  API.consultarVerificacion = async () => {
+    const v = await pedir("GET", "/verificacion", { rol: "donante" });
+    if (v.estado_verificacion !== window.DB.donante.estado_verificacion) await refrescarDonante();
+    return v;
   };
   API.revisarAlerta = (id, decision, nota) => pedir("PATCH", `/alertas/${id}/revisar`, { rol: "equipo", cuerpo: { decision, nota } });
 

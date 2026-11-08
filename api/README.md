@@ -1,4 +1,4 @@
-# API de Donaria Connect (FastAPI) — fases 2 y 3
+# API de Donaria Connect (FastAPI) — fases 2 a 4
 
 API en Python que conecta la web con la base de datos. La lógica pesada vive en SQL Server
 (`fn_donantes_elegibles`, `sp_lanzar_ola`, reglas antifraude); la API valida, autoriza y llama a la base.
@@ -19,6 +19,8 @@ API en Python que conecta la web con la base de datos. La lógica pesada vive en
 | `POST /necesidades/{id}/resultado` | clínica | Unidades obtenidas (solo la cifra) y cierre |
 | `GET /reportes` | clínica, equipo | `vw_reporte_institucion`: solo cifras |
 | `GET /alertas` · `GET /alertas/resumen` · `PATCH /alertas/{id}/revisar` · `POST /alertas/ejecutar-reglas` | equipo | Antifraude. La revisión acepta `decision` y `nota`, que quedan en auditoría |
+| `POST /verificacion` · `GET /verificacion` | donante | Crea la sesión de Didit (enlace + código QR para el celular) y consulta cómo va; si Didit aprueba, el donante pasa a *verificado*. Solo se guarda el id de la sesión y su estado, nunca imágenes |
+| `POST /webhooks/didit` | Didit | Resultado firmado (HMAC-SHA256, `X-Signature-V2`). Sirve cuando la API esté publicada (fase 6) |
 | `GET /instituciones` | todos con token | Bancos de sangre de la red (sin datos de donantes) |
 | `GET /health` · `GET /health/db` | público | Estado de la API y de la conexión a la base |
 

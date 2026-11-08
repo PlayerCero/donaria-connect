@@ -35,7 +35,9 @@ Otra dirección de API: `index.html?api=https://mi-api…` (se recuerda en el na
 | Convocatoria | Lanzar ola · Guardar unidades · Cerrar | `POST …/olas` · `POST …/resultado` |
 | Alertas | Guardar revisión (la decisión queda en auditoría) | `PATCH /alertas/{id}/revisar` |
 
-La verificación con Didit sigue simulada hasta la fase 4. La app del donante muestra al donante que recibió el
+Con la API conectada, el registro va datos → consentimiento → verificación. Si la API tiene las claves de Didit,
+la verificación es real (sandbox): la pantalla muestra un código QR para hacerla en el celular y se actualiza sola
+cuando Didit aprueba. Sin claves, sigue simulada. La app del donante muestra al donante que recibió el
 último aviso (o al que te registraste desde ese navegador; en el mapa de pantallas puedes volver al de demostración).
 El panel entra como la clínica 1 (Clínica Delgado Auna). Dirección y horario de cada clínica vienen de `data.js`
 porque la base no los guarda.

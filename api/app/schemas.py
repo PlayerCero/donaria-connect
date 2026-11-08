@@ -178,6 +178,14 @@ class ReporteOut(BaseModel):
     pct_cumplimiento: float
 
 
+class VerificacionOut(BaseModel):
+    estado_verificacion: str = Field(..., description="pendiente | verificado | rechazado (en DONANTE)")
+    estado_didit: str | None = Field(None, description="Estado de la sesión en Didit, si hay una")
+    url: str | None = Field(None, description="Enlace para hacer la verificación (solo mientras está abierta)")
+    qr_svg: str | None = Field(None, description="El mismo enlace como código QR, para abrirlo en el celular")
+    didit_configurado: bool
+
+
 class InstitucionOut(BaseModel):
     id_institucion: int
     razon_social: str

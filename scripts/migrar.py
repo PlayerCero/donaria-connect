@@ -1,4 +1,4 @@
-"""Aplica a la base los scripts de cambios posteriores a 01_*.sql (hoy: 03_fase3_respuestas.sql).
+"""Aplica a la base los scripts de cambios posteriores a 01_*.sql (03 respuestas, 04 verificación con Didit).
 
 Uso, desde la raíz del repo y con el entorno de la API activo:
     python scripts/migrar.py
@@ -17,7 +17,7 @@ sys.path.insert(0, str(RAIZ / "api"))
 
 from app.db import Database  # noqa: E402
 
-SCRIPTS = ["03_fase3_respuestas.sql"]
+SCRIPTS = ["03_fase3_respuestas.sql", "04_fase4_verificacion.sql"]
 
 
 def lotes(texto: str) -> list[str]:

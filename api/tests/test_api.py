@@ -301,3 +301,60 @@ def test_reconoce_base_despertando_como_error_pasajero():
     from app.db import _ES_TRANSITORIO
     assert _ES_TRANSITORIO.search("Database 'DonariaConnect' ... is not currently available. (40613) (SQLDriverConnect)")
     assert not _ES_TRANSITORIO.search("Login failed for user (18456)")
+
+
+# --- fase 4: verificación con Didit ---
+def test_verificacion_sin_didit_configurado_503(client, db, monkeypatch):
+    from app import didit
+    monkeypatch.setattr(didit, "configurado", lambda cfg=None: False)
+    assert client.post("/verificacion", headers=token("donante", 503)).status_code == 503
+
+
+def test_iniciar_verificacion_guarda_sesion_y_devuelve_qr(client, db, monkeypatch):
+    from app import didit
+    monkeypatch.setattr(didit, "configurado", lambda cfg=None: True)
+    pedidos = []
+    monkeypatch.setattr(didit, "crear_sesion", lambda vendor: pedidos.append(vendor) or
+                        {"session_id": "s-1", "url": "https://verify.didit.me/session/tok", "status": "Not Started"})
+    db.responder(r"LEFT JOIN dbo.VERIFICACION_IDENTIDAD", [{"session_id": None, "url": None, "estado_didit": None,
+                                                           "estado_verificacion": "pendiente"}])
+    r = client.post("/verificacion", headers=token("donante", 503))
+    assert r.status_code == 200, r.text
+    assert pedidos == ["donante-503"]  # a Didit no se le envían datos personales
+    assert r.json()["url"].startswith("https://verify.didit.me") and r.json()["qr_svg"].startswith("<svg")
+    assert any("INSERT INTO dbo.VERIFICACION_IDENTIDAD" in sql for sql, _ in db.llamadas)
+
+
+def test_ya_verificado_409(client, db, monkeypatch):
+    from app import didit
+    monkeypatch.setattr(didit, "configurado", lambda cfg=None: True)
+    db.responder(r"LEFT JOIN dbo.VERIFICACION_IDENTIDAD", [{"session_id": "s-1", "url": "u", "estado_didit": "Approved",
+                                                           "estado_verificacion": "verificado"}])
+    assert client.post("/verificacion", headers=token("donante", 503)).status_code == 409
+
+
+def test_consultar_aprobada_marca_al_donante_verificado(client, db, monkeypatch):
+    from app import didit
+    monkeypatch.setattr(didit, "configurado", lambda cfg=None: True)
+    monkeypatch.setattr(didit, "estado_sesion", lambda sid: "Approved")
+    db.responder(r"LEFT JOIN dbo.VERIFICACION_IDENTIDAD", [{"session_id": "s-1", "url": "u", "estado_didit": "In Progress",
+                                                           "estado_verificacion": "pendiente"}])
+    r = client.get("/verificacion", headers=token("donante", 503))
+    assert r.status_code == 200
+    assert any("UPDATE dbo.DONANTE SET estado_verificacion" in sql and p == ["verificado", 503] for sql, p in db.llamadas)
+
+
+def test_webhook_con_firma_falsa_401(client):
+    r = client.post("/webhooks/didit", json={"session_id": "s-1", "status": "Approved"},
+                    headers={"X-Signature-V2": "falsa", "X-Timestamp": "1"})
+    assert r.status_code == 401
+
+
+def test_firma_del_webhook_como_la_documenta_didit():
+    import hashlib, hmac, json
+    from app.didit import firma_valida
+    cuerpo = {"session_id": "s-1", "status": "Approved", "score": 1.0}
+    canonico = json.dumps({"score": 1, "session_id": "s-1", "status": "Approved"}, separators=(",", ":"))
+    firma = hmac.new(b"secreto", canonico.encode(), hashlib.sha256).hexdigest()
+    assert firma_valida(cuerpo, firma, "1000", "secreto", ahora=1100)
+    assert not firma_valida(cuerpo, firma, "1000", "secreto", ahora=2000)  # más de 5 minutos
