@@ -156,6 +156,8 @@ class OlaOut(BaseModel):
     numero_ola: int
     radio_km: int
     donantes_notificados: int
+    whatsapp_enviados: int = Field(0, description="Mensajes reales enviados (solo a números de prueba)")
+    whatsapp_error: str | None = None
 
 
 class ResultadoIn(BaseModel):

@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..config import settings
+from .. import whatsapp
 from ..db import Database, ErrorDeNegocio, get_db
 from ..schemas import EstimadoOut, NecesidadIn, NecesidadOut, OlaIn, OlaOut, OlaResumenOut, ResultadoIn, TipoSangre
 from ..security import Usuario, requiere
@@ -112,13 +113,54 @@ def lanzar_ola(id_necesidad: int, datos: OlaIn | None = None, usuario: Usuario =
     except ErrorDeNegocio as e:
         codigo = status.HTTP_400_BAD_REQUEST if e.codigo == 50001 else status.HTTP_409_CONFLICT
         raise HTTPException(codigo, e.mensaje) from e
+    enviados, error = _avisar_por_whatsapp(db, id_necesidad, numero, necesidad["tipo_sangre"], usuario)
     return OlaOut(
         id_necesidad=id_necesidad,
         tipo_sangre=necesidad["tipo_sangre"],
         numero_ola=numero,
         radio_km=int(r["radio_km"]),
         donantes_notificados=int(r["donantes_notificados_en_esta_ola"]),
+        whatsapp_enviados=enviados,
+        whatsapp_error=error,
     )
+
+
+_SQL_AVISADOS = """
+SELECT x.id_notificacion, d.telefono_whatsapp, i.razon_social AS institucion,
+       CAST(d.ubicacion.STDistance(i.ubicacion) / 1000.0 AS DECIMAL(5, 1)) AS distancia_km
+FROM dbo.NOTIFICACION x
+JOIN dbo.OLA_CONVOCATORIA o ON o.id_ola = x.id_ola
+JOIN dbo.NECESIDAD n        ON n.id_necesidad = o.id_necesidad
+JOIN dbo.INSTITUCION i      ON i.id_institucion = n.id_institucion
+JOIN dbo.DONANTE d          ON d.id_donante = x.id_donante
+WHERE o.id_necesidad = ? AND o.numero_ola = ?;
+"""
+
+
+def _avisar_por_whatsapp(db: Database, id_necesidad: int, numero_ola: int, tipo: str,
+                         usuario: Usuario) -> tuple[int, str | None]:
+    """Envía el aviso real solo a los notificados cuyo celular es un número de prueba de Meta."""
+    if not whatsapp.configurado():
+        return 0, None
+    enviados, error = 0, None
+    for a in db.consultar(_SQL_AVISADOS, [id_necesidad, numero_ola]):
+        if not whatsapp.es_de_prueba(a["telefono_whatsapp"]):
+            continue  # donante ficticio: su aviso queda solo en la base
+        try:
+            whatsapp.enviar_plantilla(a["telefono_whatsapp"], [a["institucion"], tipo, f"{a['distancia_km']}"])
+            estado = "Enviado"
+            enviados += 1
+        except whatsapp.ErrorWhatsApp as e:
+            estado, error = "Fallido", str(e)
+        db.ejecutar("UPDATE dbo.NOTIFICACION SET canal = 'WhatsApp', estado_entrega = ? WHERE id_notificacion = ?",
+                    [estado, a["id_notificacion"]])
+    if enviados or error:
+        db.ejecutar(
+            "INSERT INTO dbo.AUDITORIA (usuario, accion, tabla_afectada, fecha_hora) "
+            "VALUES (?, ?, N'NOTIFICACION', SYSDATETIME())",
+            [usuario.etiqueta, f"WhatsApp ola {numero_ola} de la necesidad {id_necesidad}: {enviados} enviados"
+                               + (" (con errores)" if error else "")])
+    return enviados, error
 
 
 @router.post("/{id_necesidad}/resultado", status_code=status.HTTP_204_NO_CONTENT,

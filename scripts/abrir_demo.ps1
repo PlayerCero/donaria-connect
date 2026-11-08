@@ -1,4 +1,4 @@
-# Donaria Connect - abre la demo completa en Windows: API + web conectada a la base + verificacion con Didit (fases 2-4).
+# Donaria Connect - abre la demo completa en Windows: API + web conectada a la base + verificacion con Didit + avisos por WhatsApp (fases 2-5).
 # Se puede correr varias veces: actualiza el codigo, aplica los cambios de la base y vuelve a levantar todo.
 # Uso: doble clic en "ABRIR DEMO (doble clic).bat", o en PowerShell:  powershell -ExecutionPolicy Bypass -File abrir_demo.ps1
 $ErrorActionPreference = "Stop"
@@ -64,6 +64,25 @@ if (-not ((Get-Content $envFile) -match '^DIDIT_API_KEY=.+')) {
         Poner-Variable "DIDIT_WORKFLOW_ID" $flujo.Trim()
         Write-Host "[ok] Didit configurado" -ForegroundColor Green
     }
+}
+
+# WhatsApp (fase 5): la primera vez pide los datos; despues solo ofrece cambiar el token (el temporal dura 24 h).
+$envTxt = Get-Content $envFile
+if (-not ($envTxt -match '^WHATSAPP_PHONE_NUMBER_ID=.+')) {
+    Write-Host "`n== WhatsApp (numero de prueba de Meta) ==" -ForegroundColor Cyan
+    Write-Host "Meta for Developers -> tu app -> WhatsApp -> Configuracion de la API. Enter vacio = seguir sin WhatsApp." -ForegroundColor Yellow
+    $idNumero = Read-Host "Pega el Phone number ID (Identificador del numero de telefono)"
+    if ($idNumero) {
+        $tokenWa = Read-Host "Pega el token de acceso"
+        $miCel = Read-Host "Tu celular registrado como destinatario de prueba (9 digitos)"
+        Poner-Variable "WHATSAPP_PHONE_NUMBER_ID" $idNumero.Trim()
+        Poner-Variable "WHATSAPP_TOKEN" $tokenWa.Trim()
+        Poner-Variable "WHATSAPP_NUMEROS_PRUEBA" ($miCel -replace '\s', '')
+        Write-Host "[ok] WhatsApp configurado" -ForegroundColor Green
+    }
+} else {
+    $tokenWa = Read-Host "`nToken nuevo de WhatsApp (Enter = mantener el actual; el temporal vence a las 24 h)"
+    if ($tokenWa) { Poner-Variable "WHATSAPP_TOKEN" $tokenWa.Trim(); Write-Host "[ok] Token de WhatsApp actualizado" -ForegroundColor Green }
 }
 
 Set-Location (Join-Path $destino "api")

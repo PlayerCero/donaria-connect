@@ -1,4 +1,4 @@
-# API de Donaria Connect (FastAPI) — fases 2 a 4
+# API de Donaria Connect (FastAPI) — fases 2 a 5
 
 API en Python que conecta la web con la base de datos. La lógica pesada vive en SQL Server
 (`fn_donantes_elegibles`, `sp_lanzar_ola`, reglas antifraude); la API valida, autoriza y llama a la base.
@@ -15,12 +15,13 @@ API en Python que conecta la web con la base de datos. La lógica pesada vive en
 | `PUT /donantes/me/convocatorias/{id}/respuesta` | donante | Responder «voy» / «no» (o `null` para borrar). La clínica solo ve el conteo |
 | `GET` / `POST /necesidades` | clínica | Listar (con olas, respondieron y unidades) / declarar una necesidad (sin datos de pacientes) |
 | `GET /necesidades/estimado` | clínica | Cuántos donantes elegibles hay a `radio_km` de la clínica (opcional `tipo_sangre`) |
-| `POST /necesidades/{id}/olas` | clínica | Lanza la siguiente ola (3 → 6 → 10 km) con `sp_lanzar_ola` |
+| `POST /necesidades/{id}/olas` | clínica | Lanza la siguiente ola (3 → 6 → 10 km) con `sp_lanzar_ola`. Si WhatsApp está configurado, envía la plantilla real **solo** a los notificados cuyo celular está en `WHATSAPP_NUMEROS_PRUEBA` y guarda *Enviado* o *Fallido* en `NOTIFICACION` |
 | `POST /necesidades/{id}/resultado` | clínica | Unidades obtenidas (solo la cifra) y cierre |
 | `GET /reportes` | clínica, equipo | `vw_reporte_institucion`: solo cifras |
 | `GET /alertas` · `GET /alertas/resumen` · `PATCH /alertas/{id}/revisar` · `POST /alertas/ejecutar-reglas` | equipo | Antifraude. La revisión acepta `decision` y `nota`, que quedan en auditoría |
 | `POST /verificacion` · `GET /verificacion` | donante | Crea la sesión de Didit (enlace + código QR para el celular) y consulta cómo va; si Didit aprueba, el donante pasa a *verificado*. Solo se guarda el id de la sesión y su estado, nunca imágenes |
 | `POST /webhooks/didit` | Didit | Resultado firmado (HMAC-SHA256, `X-Signature-V2`). Sirve cuando la API esté publicada (fase 6) |
+| `POST /whatsapp/prueba` | equipo | Envía un aviso de ejemplo a los números de prueba (para comprobar el token y la plantilla) |
 | `GET /instituciones` | todos con token | Bancos de sangre de la red (sin datos de donantes) |
 | `GET /health` · `GET /health/db` | público | Estado de la API y de la conexión a la base |
 

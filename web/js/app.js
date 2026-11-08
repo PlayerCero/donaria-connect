@@ -67,6 +67,8 @@
     if (S.ocupado) return; S.ocupado = true; render();
     try { await fn(); } catch (e) { toast(e.message || "No se pudo guardar. Inténtalo otra vez."); } finally { S.ocupado = false; render(); }
   };
+  // Resumen del envío real por WhatsApp (solo números de prueba) para el aviso de la clínica.
+  const textoWhatsApp = (n, error) => error ? `. WhatsApp no se pudo enviar: ${error}` : n ? ` · ${n} por WhatsApp real (número de prueba)` : "";
   const go = (h) => { if (location.hash === "#" + h) render(); else location.hash = h; };
 
   /* ======================= APP DEL DONANTE ======================= */
@@ -544,8 +546,8 @@
       case "n-radio": S.nueva.radio = Number(v); render(); break;
       case "cerrar-sheet": go("p-resumen"); break;
       case "lanzar": if (ON()) {
-          conApi(async () => { const { id, notificados } = await window.API.crearNecesidad(S.nueva.tipo, S.nueva.meta, S.nueva.radio);
-            S.nueva = { tipo: "", meta: 4, radio: 3 }; go("p-conv-" + id); toast(`Convocatoria lanzada: se avisó a ${notificados} donantes`); });
+          conApi(async () => { const { id, notificados, whatsapp, error } = await window.API.crearNecesidad(S.nueva.tipo, S.nueva.meta, S.nueva.radio);
+            S.nueva = { tipo: "", meta: 4, radio: 3 }; go("p-conv-" + id); toast(`Convocatoria lanzada: se avisó a ${notificados} donantes${textoWhatsApp(whatsapp, error)}`); });
           break;
         } else { const id = Math.max(...DB.necesidades.map((x) => x.id_necesidad)) + 1, est = estimado();
         DB.necesidades.unshift({ id_necesidad: id, tipo_sangre: S.nueva.tipo, zona: "Miraflores y alrededores", unidades_meta: S.nueva.meta, estado: "Activa", fecha_creacion: HOY() + " 13:05",
@@ -553,7 +555,7 @@
         S.nueva = { tipo: "", meta: 4, radio: 3 }; go("p-conv-" + id); toast(`Convocatoria lanzada: ola 1 enviada a ${est} donantes`); break; }
       case "ola": if (ON()) {
           conApi(async () => { const o = await window.API.lanzarOla(Number(el.dataset.id));
-            toast(o.donantes_notificados ? `Ola ${o.numero_ola} enviada a ${o.donantes_notificados} donantes nuevos a menos de ${o.radio_km} km` : `Ola ${o.numero_ola} lanzada: no hay donantes nuevos aptos a menos de ${o.radio_km} km`); });
+            toast((o.donantes_notificados ? `Ola ${o.numero_ola} enviada a ${o.donantes_notificados} donantes nuevos a menos de ${o.radio_km} km` : `Ola ${o.numero_ola} lanzada: no hay donantes nuevos aptos a menos de ${o.radio_km} km`) + textoWhatsApp(o.whatsapp_enviados, o.whatsapp_error)); });
           break;
         } else { const n = N(el.dataset.id), r = [3, 6, 10].find((x) => !n.olas.some((o) => o.radio_km === x)), cnt = Math.round((ESTIM[n.tipo_sangre] || 20) * (r === 6 ? 0.9 : 1.2));
         n.olas.push({ numero_ola: n.olas.length + 1, radio_km: r, donantes_notificados: cnt, respondieron: 0, fecha_envio: "13:10" }); render(); toast(`Ola ${n.olas.length} enviada a ${cnt} donantes a menos de ${r} km`); break; }

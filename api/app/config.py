@@ -49,6 +49,14 @@ class Settings:
     didit_webhook_secret: str = field(default_factory=lambda: os.getenv("DIDIT_WEBHOOK_SECRET", ""))
     didit_base_url: str = field(default_factory=lambda: os.getenv("DIDIT_BASE_URL", "https://verification.didit.me"))
 
+    # WhatsApp Cloud API (fase 5). Solo se envía a los números de prueba registrados en Meta.
+    whatsapp_token: str = field(default_factory=lambda: os.getenv("WHATSAPP_TOKEN", ""))
+    whatsapp_phone_number_id: str = field(default_factory=lambda: os.getenv("WHATSAPP_PHONE_NUMBER_ID", ""))
+    whatsapp_numeros_prueba: list[str] = field(default_factory=lambda: _lista(os.getenv("WHATSAPP_NUMEROS_PRUEBA", "")))
+    whatsapp_plantilla: str = field(default_factory=lambda: os.getenv("WHATSAPP_PLANTILLA", "convocatoria_donacion"))
+    whatsapp_idioma: str = field(default_factory=lambda: os.getenv("WHATSAPP_IDIOMA", "es"))
+    whatsapp_version: str = field(default_factory=lambda: os.getenv("WHATSAPP_VERSION", "v23.0"))
+
     cors_origins: list[str] = field(default_factory=lambda: _lista(os.getenv("CORS_ORIGINS", "*")))
 
     def hoy(self) -> date:

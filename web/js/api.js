@@ -145,9 +145,12 @@
   API.crearNecesidad = async (tipo, meta, radio) => {
     const n = await pedir("POST", "/necesidades", { rol: "clinica", cuerpo: { tipo_sangre: tipo, unidades_meta: meta } });
     // La primera ola puede llegar hasta 6 o 10 km: se lanzan en orden las olas hasta ese radio.
-    let notificados = 0;
-    for (const _ of [3, 6, 10].filter((r) => r <= radio)) notificados += (await pedir("POST", `/necesidades/${n.id_necesidad}/olas`, { rol: "clinica" })).donantes_notificados;
-    await refrescarNecesidades(); return { id: n.id_necesidad, notificados };
+    let notificados = 0, whatsapp = 0, error = null;
+    for (const _ of [3, 6, 10].filter((r) => r <= radio)) {
+      const o = await pedir("POST", `/necesidades/${n.id_necesidad}/olas`, { rol: "clinica" });
+      notificados += o.donantes_notificados; whatsapp += o.whatsapp_enviados || 0; error = error || o.whatsapp_error;
+    }
+    await refrescarNecesidades(); return { id: n.id_necesidad, notificados, whatsapp, error };
   };
   API.lanzarOla = async (id) => { const o = await pedir("POST", `/necesidades/${id}/olas`, { rol: "clinica" }); await refrescarNecesidades(); return o; };
   API.guardarUnidades = async (id, unidades, cerrar = false) => {

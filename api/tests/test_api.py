@@ -179,7 +179,7 @@ def test_lanzar_siguiente_ola(client, db):
     r = client.post("/necesidades/30/olas", headers=token("clinica", 1, 1))
     assert r.status_code == 200, r.text
     assert r.json() == {"id_necesidad": 30, "tipo_sangre": "A+", "numero_ola": 2, "radio_km": 6,
-                        "donantes_notificados": 34}
+                        "donantes_notificados": 34, "whatsapp_enviados": 0, "whatsapp_error": None}
 
 
 def test_ola_repetida_409(client, db):
@@ -358,3 +358,43 @@ def test_firma_del_webhook_como_la_documenta_didit():
     firma = hmac.new(b"secreto", canonico.encode(), hashlib.sha256).hexdigest()
     assert firma_valida(cuerpo, firma, "1000", "secreto", ahora=1100)
     assert not firma_valida(cuerpo, firma, "1000", "secreto", ahora=2000)  # más de 5 minutos
+
+
+# --- fase 5: WhatsApp ---
+def test_numero_internacional_y_lista_de_prueba(monkeypatch):
+    from app import whatsapp
+    from app.config import settings
+    assert whatsapp.numero_internacional("987 654 321") == "51987654321"
+    assert whatsapp.numero_internacional("51987654321") == "51987654321"
+    monkeypatch.setattr(whatsapp, "settings", settings)
+    cfg = type("C", (), {"whatsapp_numeros_prueba": ["987654321"]})()
+    assert whatsapp.es_de_prueba("51987654321", cfg) and not whatsapp.es_de_prueba("911111111", cfg)
+
+
+def test_cuerpo_de_la_plantilla_sin_datos_personales():
+    from app import whatsapp
+    cfg = type("C", (), {"whatsapp_plantilla": "convocatoria_donacion", "whatsapp_idioma": "es"})()
+    c = whatsapp._cuerpo("987654321", ["Clínica Delgado Auna", "O-", "2.4"], cfg)
+    assert c["to"] == "51987654321" and c["template"]["name"] == "convocatoria_donacion"
+    assert [p["text"] for p in c["template"]["components"][0]["parameters"]] == ["Clínica Delgado Auna", "O-", "2.4"]
+    cfg.whatsapp_plantilla, cfg.whatsapp_idioma = "hello_world", "en_US"
+    assert "components" not in whatsapp._cuerpo("987654321", ["x"], cfg)["template"]
+
+
+def test_ola_envia_whatsapp_solo_a_numeros_de_prueba(client, db, monkeypatch):
+    from app import whatsapp
+    _necesidad(db)
+    db.responder(r"MAX\(numero_ola\)", [{"siguiente": 1}])
+    db.responder(r"EXEC dbo.sp_lanzar_ola", [{"radio_km": 3, "donantes_notificados_en_esta_ola": 2}])
+    db.responder(r"SELECT x.id_notificacion, d.telefono_whatsapp", [
+        {"id_notificacion": 10, "telefono_whatsapp": "987654321", "institucion": "Clínica Delgado Auna", "distancia_km": 2.4},
+        {"id_notificacion": 11, "telefono_whatsapp": "911111111", "institucion": "Clínica Delgado Auna", "distancia_km": 1.0}])
+    enviados = []
+    monkeypatch.setattr(whatsapp, "configurado", lambda cfg=None: True)
+    monkeypatch.setattr(whatsapp, "es_de_prueba", lambda n, cfg=None: n == "987654321")
+    monkeypatch.setattr(whatsapp, "enviar_plantilla", lambda n, datos, cfg=None: enviados.append((n, datos)) or "wamid.1")
+    r = client.post("/necesidades/30/olas", headers=token("clinica", 1, 1))
+    assert r.status_code == 200, r.text
+    assert r.json()["whatsapp_enviados"] == 1
+    assert enviados == [("987654321", ["Clínica Delgado Auna", "A+", "2.4"])]
+    assert any("estado_entrega = ?" in sql and p == ["Enviado", 10] for sql, p in db.llamadas)
