@@ -6,6 +6,9 @@ cercanos, que acuden directo al banco de sangre.
 
 > **Demo con datos ficticios.** No contiene ni procesa DNI, nombres ni datos de salud reales.
 
+**Demo en línea:** https://playercero.github.io/donaria-connect/ · API: https://donaria-eric-api-eqg0dpfxgneubpbs.brazilsouth-01.azurewebsites.net/docs
+(plan gratuito: la primera carga puede tardar hasta 2 minutos mientras Azure despierta la API y la base).
+
 ## Por qué existe
 
 Avisar a todos los donantes de golpe agota la base con mensajes; no avisar a nadie deja la necesidad sin cubrir.
@@ -39,7 +42,7 @@ SQL Server opera la app (transacciones, claves únicas, respuestas en milisegund
 |---|---|---|
 | `db/` | Script de creación + 500 donantes ficticios, olas, antifraude, vistas y permisos; consultas de demo. `01_azure.sql` es la versión para Azure SQL | ✅ local y en Azure SQL |
 | `web/` | Web del donante, panel de la clínica y del equipo (sin dependencias). Si la API está corriendo usa la base; si no, datos de ejemplo. Ver `web/README.md` | ✅ fase 3 |
-| `api/` | API en FastAPI: registro, perfil y elegibilidad, avisos y respuestas, necesidades, olas, reportes y antifraude. Ver `api/README.md` | ✅ fases 2 y 3 |
+| `api/` | API en FastAPI: registro, perfil y elegibilidad, avisos y respuestas, necesidades, olas, reportes y antifraude. Ver `api/README.md` | ✅ fases 2 a 6 (publicada en Azure App Service) |
 | `scripts/` | `abrir_demo.ps1` (levanta todo en Windows), `migrar.py` (cambios de la base) y `smoke_test.py` (prueba de punta a punta) | ✅ |
 | `pipeline/` | Extracción a BigQuery | 🔲 fase 7 |
 | `docs/` | Plan por fases y diagrama de la base | ✅ |
